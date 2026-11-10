@@ -1,7 +1,7 @@
 {{define "actions"}}{{with .Page}}{{with .Entry}}
 <button class="iconbtn aa" data-action="open-dialog" data-dialog="prefs-dialog" aria-label="Display settings" title="Display settings">Aa</button>
 <button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
-<button class="iconbtn" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Add to readlist" title="Readlists">{{icon "lists"}}</button>
+<button class="iconbtn toggle{{if .Readlists}} on{{end}}" id="lists-button" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Readlists" title="{{if .Readlists}}In a readlist{{else}}Add to a readlist{{end}}">{{icon "lists"}}</button>
 <button class="iconbtn toggle{{if .Preserved}} on{{end}}" data-action="preserve" data-id="{{.ID}}" aria-label="Keep a local copy" title="{{if .Preserved}}Saved locally{{else}}Keep a local copy{{end}}"{{if .Preserved}} disabled{{end}}>{{icon "archive"}}</button>
 <button class="iconbtn" data-action="open-dialog" data-dialog="export-dialog" aria-label="Export" title="Export">{{icon "download"}}</button>
 {{if .URL}}<a class="iconbtn" href="{{.URL}}" target="_blank" rel="noopener noreferrer" aria-label="Open original" title="Open original">{{icon "external"}}</a>{{end}}

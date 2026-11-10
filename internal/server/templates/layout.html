@@ -33,6 +33,7 @@
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></g></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
@@ -44,9 +45,11 @@
 
 {{if ne .Tab "login"}}
 <aside class="sidebar">
-  <div class="brand"><img src="/icon/192.png" alt="" width="28" height="28"> Readroom</div>
+  <div class="brand"><img src="/icon/192.png" alt="" width="28" height="28"> Readroom
+    <button class="iconbtn" data-action="toggle-sidebar" aria-label="Hide sidebar" title="Hide sidebar">{{icon "sidebar"}}</button></div>
   {{template "nav" .}}
 </aside>
+<button class="iconbtn show-sidebar" data-action="toggle-sidebar" aria-label="Show sidebar" title="Show sidebar">{{icon "sidebar"}}</button>
 {{end}}
 
 <div class="main">
@@ -149,6 +152,7 @@
   </ul>
   {{end}}
   {{if not .Groups}}<p class="hint">No feeds yet. Add one under Manage.</p>{{end}}
+  <h2>Settings</h2>
   <ul class="group foot">
     <li><a href="/feeds" class="{{if eq .Active "manage"}}on{{end}}">{{icon "manage"}}<span>Manage feeds</span></a></li>
     <li><a href="/readlists" class="{{if eq .Active "lists"}}on{{end}}">{{icon "lists"}}<span>Manage readlists</span></a></li>

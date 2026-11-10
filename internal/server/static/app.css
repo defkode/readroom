@@ -114,7 +114,7 @@ small { color: var(--muted); font-size: .8em; font-weight: 400; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 
 /* ---- shell -------------------------------------------------------------- */
-.sidebar { display: none; }
+.sidebar, .show-sidebar { display: none; }
 .main { min-height: 100dvh; padding-bottom: calc(var(--tabbar) + var(--safe-b) + 24px); }
 main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 
@@ -163,8 +163,6 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .nav .group a span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav .group a b { color: var(--muted); font-weight: 500; font-size: .9rem; font-variant-numeric: tabular-nums; }
 .nav .group a.err span { color: var(--danger); }
-.nav .foot { margin-top: 24px; }
-.nav .out { margin-top: 12px; }
 .nav .group button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 0 14px; cursor: pointer; }
 .nav .group button .icon { color: var(--accent); width: 20px; height: 20px; }
 .nav .group button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -370,12 +368,14 @@ body.bare .main { display: grid; place-items: center; padding: 24px; }
   }
   .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-size: 1.15rem; font-weight: 750; letter-spacing: -.02em; }
   .sidebar .brand img { border-radius: 7px; }
+  .sidebar .brand .iconbtn { width: 36px; height: 36px; margin: -4px -4px -4px auto; color: var(--muted); }
+  .sidebar .brand .iconbtn:hover, .show-sidebar:hover { background: var(--surface-2); }
   .sidebar .nav .group { background: none; border-radius: 0; }
   .sidebar .nav .group a { min-height: 36px; padding: 0 10px; border-radius: 9px; box-shadow: none !important; font-size: .94rem; }
   .sidebar .nav .group a:hover { background: var(--surface-2); }
   .sidebar .nav .group button { min-height: 36px; padding: 0 10px; border-radius: 9px; font-size: .94rem; }
   .sidebar .nav .group button:hover { background: var(--surface-2); }
-  .sidebar .nav .out { margin-top: 4px; }
+  .sidebar .nav .out { margin-top: 0; }
   .sidebar .nav .group a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .sidebar .nav .group a.on b { color: var(--accent); }
   .sidebar .nav h2 { margin-left: 10px; }
@@ -389,6 +389,14 @@ body.bare .main { display: grid; place-items: center; padding: 24px; }
   main { padding: 0 32px; max-width: 824px; }
   #toast { bottom: 24px; left: calc(50% + var(--sidebar) / 2); }
   .entry:hover, .rowbtn:hover { background: color-mix(in srgb, var(--surface-2) 50%, transparent); }
+
+  /* The sidebar can be put away; a button in the corner brings it back. */
+  [data-sidebar-hidden] .sidebar { display: none; }
+  [data-sidebar-hidden] .main { margin-left: 0; }
+  [data-sidebar-hidden] #toast { left: 50%; }
+  [data-sidebar-hidden] .show-sidebar { display: inline-grid; position: fixed; top: 14px; left: 10px; z-index: 30; width: 40px; height: 40px; color: var(--muted); }
+  [data-sidebar-hidden] .topbar { padding-left: max(60px, calc((100% - 760px) / 2)); }
+  [data-sidebar-hidden] body.reader .topbar { padding-left: max(60px, calc((100% - var(--read-width)) / 2 - 12px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

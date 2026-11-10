@@ -3,7 +3,7 @@
 // painted with the right theme and type from the first frame.
 (function () {
   const KEY = 'readroom:prefs';
-  const DEFAULTS = { theme: 'auto', font: 'literata', size: 18, leading: 'normal', width: 'medium', align: 'left' };
+  const DEFAULTS = { theme: 'auto', font: 'literata', size: 18, leading: 'normal', width: 'medium', align: 'left', sidebar: 'shown' };
   const FONTS = {
     literata: 'Literata, "Iowan Old Style", "Palatino Linotype", Georgia, serif',
     serif: '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Noto Serif", serif',
@@ -21,6 +21,7 @@
     if (!LEADING[out.leading]) out.leading = DEFAULTS.leading;
     if (!WIDTH[out.width]) out.width = DEFAULTS.width;
     if (!['left', 'justify'].includes(out.align)) out.align = DEFAULTS.align;
+    if (!['shown', 'hidden'].includes(out.sidebar)) out.sidebar = DEFAULTS.sidebar;
     out.size = Math.min(SIZE.max, Math.max(SIZE.min, Math.round(+out.size) || DEFAULTS.size));
     return out;
   };
@@ -32,6 +33,8 @@
   const apply = (p) => {
     if (p.theme === 'auto') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', p.theme);
+    // Only wide screens have a sidebar to hide; the stylesheet ignores this elsewhere.
+    root.toggleAttribute('data-sidebar-hidden', p.sidebar === 'hidden');
     root.style.setProperty('--read-font', FONTS[p.font]);
     root.style.setProperty('--read-size', p.size + 'px');
     root.style.setProperty('--read-leading', LEADING[p.leading]);
@@ -57,10 +60,9 @@
       return this.get();
     },
     reset() {
-      try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+      // Resets how text looks; whether the sidebar is shown is not a reading setting.
       current = clean({});
-      apply(current);
-      return this.get();
+      return this.set({ sidebar: load().sidebar });
     },
   };
 })();

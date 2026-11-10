@@ -136,6 +136,7 @@ const actions = {
     if (dialog.id === 'prefs-dialog') syncPrefs();
     dialog.showModal();
   },
+  'toggle-sidebar'() { readroomPrefs.set({ sidebar: readroomPrefs.get().sidebar === 'hidden' ? 'shown' : 'hidden' }); },
   'reset-prefs'() { readroomPrefs.reset(); syncPrefs(); },
   'close-dialog'(el) { el.closest('dialog').close(); },
 
@@ -248,6 +249,11 @@ document.addEventListener('change', async (e) => {
     if (el.name === 'preserve' && el.form) syncSince(el.form);
     if (el.dataset.action === 'toggle-list') {
       await api(el.checked ? 'PUT' : 'DELETE', `/readlists/${el.dataset.list}/entries/${el.dataset.id}`);
+      // The toolbar's bookmark is filled while the article is in any readlist.
+      const member = !!document.querySelector('#list-checks input:checked');
+      const button = document.getElementById('lists-button');
+      button.classList.toggle('on', member);
+      button.title = member ? 'In a readlist' : 'Add to a readlist';
     }
     if (el.dataset.action === 'import-opml' && el.files[0]) {
       const body = new FormData();

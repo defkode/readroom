@@ -148,7 +148,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 ## 5. Web app
 
-- Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up.
+- Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up, which can be hidden (remembered per device).
 - **Themes:** light (warm paper), sepia and a soft dark (dark grey, cream text). The default follows
   the system. Colours are deliberately low-contrast with a muted accent — the first version (pure
   black, saturated orange) was hard to read on a phone.
@@ -213,7 +213,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
-| Display settings stored per device, not on the server | the phone and the desktop want different type and theme |
+| Display settings stored per device, not on the server | the phone and the desktop want different type and theme; the same goes for whether the desktop sidebar is hidden |
 | Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone; mirrors the existing password-vault setup |
 | Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |
 | Manual updates for the first month | changes are batched during testing; a registry adds moving parts not yet needed |
