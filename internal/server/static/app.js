@@ -86,6 +86,19 @@ try {
   }
 } catch { /* storage unavailable */ }
 
+// Ask for a local copy and wait for it: the copy is made in the background.
+const keepCopy = async (id) => {
+  await api('POST', `/entries/${id}/preserve`);
+  toast('Saving a local copy…');
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const e = await api('GET', `/entries/${id}`);
+    if (e.preserved) return true;
+    if (e.preserve_error) { toast('Could not save: ' + e.preserve_error); return false; }
+  }
+  return false;
+};
+
 const actions = {
   async 'toggle-star'(el) {
     const on = !el.classList.contains('on');
@@ -98,15 +111,17 @@ const actions = {
     history.length > 1 ? history.back() : (location.href = '/');
   },
   async preserve(el) {
-    await api('POST', `/entries/${el.dataset.id}/preserve`);
-    toast('Saving a local copy…');
-    // The copy is made in the background; pick it up once it is ready.
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const e = await api('GET', `/entries/${el.dataset.id}`);
-      if (e.preserved) return location.reload();
-      if (e.preserve_error) return toast('Could not save: ' + e.preserve_error);
-    }
+    if (await keepCopy(el.dataset.id)) location.reload();
+  },
+  // Not awaited: the copy takes a while and the shared menu must stay usable for other rows.
+  'row-preserve'(el) {
+    const row = rowOf(el);
+    closeMenu(el);
+    keepCopy(el.dataset.id).then((kept) => {
+      if (!kept) return;
+      row.classList.add('kept');
+      toast('Saved locally');
+    }).catch((err) => toast(err.message));
   },
   'mark-all-read'(el) { return markRead(el, {}); },
   'read-through'(el) { return markRead(el, { through: +el.dataset.id }); },
@@ -177,6 +192,9 @@ const actions = {
       menu.querySelectorAll('button').forEach((b) => { b.dataset.id = el.dataset.id; });
       label('row-read', row.classList.contains('read') ? 'Mark as unread' : 'Mark as read');
       label('row-star', row.classList.contains('starred') ? 'Remove star' : 'Star');
+      const kept = row.classList.contains('kept');
+      label('row-preserve', kept ? 'Saved locally' : 'Keep a local copy');
+      menu.querySelector('[data-action="row-preserve"]').disabled = kept;
     }
     menu.showPopover();
     const at = el.getBoundingClientRect();

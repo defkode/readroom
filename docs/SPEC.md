@@ -129,7 +129,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 - Views: Unread, All, Starred; by feed, by category, by readlist. Opening an article marks it read;
   it can be marked unread again.
-- Every row has a ⋮ menu: mark as read or unread, star, "Mark this and older as read", and in a readlist
+- Every row has a ⋮ menu: mark as read or unread, star, keep a local copy, "Mark this and older as read", and in a readlist
   "Remove from readlist". The list's own ⋮ menu has "Mark all N as read" and, for a
   single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
   current feed or category (or everything), are not offered in a readlist, in Starred or in search
@@ -148,7 +148,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 ## 5. Web app
 
-- Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up, which can be hidden (remembered per device).
+- Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up, which can be hidden (remembered per device). In the sidebar, Manage feeds, Manage readlists and Display sit in one Settings menu next to the name, and Sign out at the foot; on a phone they are a tab and a section of the Feeds page.
 - **Themes:** light (warm paper), sepia and a soft dark (dark grey, cream text). The default follows
   the system. Colours are deliberately low-contrast with a muted accent — the first version (pure
   black, saturated orange) was hard to read on a phone.

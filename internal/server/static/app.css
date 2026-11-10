@@ -192,13 +192,13 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
   position: fixed; inset: auto; margin: 0; min-width: 220px; padding: 6px; border: .5px solid var(--sep); border-radius: 14px;
   background: var(--surface); color: var(--text); box-shadow: 0 6px 28px rgba(0, 0, 0, .16);
 }
-.menu button {
+.menu button, .menu a {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px;
   background: none; color: inherit; font: inherit; font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer;
 }
-.menu button:not([disabled]):hover, .menu button:not([disabled]):active { background: var(--surface-2); }
+.menu button:not([disabled]):hover, .menu button:not([disabled]):active, .menu a:hover, .menu a:active { background: var(--surface-2); }
 .menu button[disabled] { color: var(--muted); cursor: default; }
-.menu button .icon { width: 18px; height: 18px; color: var(--muted); }
+.menu button .icon, .menu a .icon { width: 18px; height: 18px; color: var(--muted); }
 .entry .dot { flex: none; width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: var(--accent); }
 .entry.read .dot { background: transparent; }
 .entry .body { display: grid; gap: 3px; min-width: 0; flex: 1; }
@@ -213,7 +213,8 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .summary h2 .icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
 .entry .thumb { order: 2; flex: none; width: 64px; height: 64px; margin-top: 2px; border-radius: 9px; object-fit: cover; object-position: top left; background: var(--surface-2); }
 .entry .flags { display: flex; gap: 6px; margin-top: 2px; color: var(--faint); }
-.entry:not(.starred):not(.kept) .flags, .entry:not(.starred) .flags .starred { display: none; }
+.entry:not(.starred):not(.kept) .flags, .entry:not(.starred) .flags .starred, .entry:not(.kept) .flags .kept { display: none; }
+.entry .flags span { display: inline-flex; }
 .entry .flags .icon { width: 14px; height: 14px; }
 .entry .flags .starred { color: var(--star); }
 .entry .flags .starred .icon { fill: currentColor; }
@@ -363,12 +364,25 @@ body.bare .main { display: grid; place-items: center; padding: 24px; }
 @media (min-width: 900px) {
   .tabbar { display: none; }
   .sidebar {
-    display: block; position: fixed; inset: 0 auto 0 0; width: var(--sidebar); padding: 14px 12px 24px; overflow-y: auto;
+    display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; width: var(--sidebar); padding: 14px 12px 14px; overflow-y: auto;
     background: var(--bg); border-right: .5px solid var(--sep); overscroll-behavior: contain;
   }
   .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-size: 1.15rem; font-weight: 750; letter-spacing: -.02em; }
   .sidebar .brand img { border-radius: 7px; }
   .sidebar .brand .iconbtn { width: 36px; height: 36px; margin: -4px -4px -4px auto; color: var(--muted); }
+  .sidebar .brand .iconbtn + .iconbtn { margin-left: -6px; }
+  .sidebar .brand .iconbtn.on { color: var(--accent); }
+  .sidebar .brand .iconbtn .icon { width: 20px; height: 20px; }
+  .sidebar .nav .settings, .sidebar .nav .foot { display: none; } /* in the Settings menu instead */
+  /* Signing out is not a setting: it sits alone at the foot of the sidebar. */
+  .sidebar .signout { margin-top: auto; padding-top: 16px; }
+  .sidebar .signout button {
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0 10px;
+    border-radius: 9px; font-size: .94rem; color: var(--muted); cursor: pointer;
+  }
+  .sidebar .signout button:hover { background: var(--surface-2); color: var(--text); }
+  .sidebar .signout button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sidebar .signout .icon { width: 20px; height: 20px; }
   .sidebar .brand .iconbtn:hover, .show-sidebar:hover { background: var(--surface-2); }
   .sidebar .nav .group { background: none; border-radius: 0; }
   .sidebar .nav .group a { min-height: 36px; padding: 0 10px; border-radius: 9px; box-shadow: none !important; font-size: .94rem; }

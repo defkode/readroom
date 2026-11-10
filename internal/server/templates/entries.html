@@ -21,6 +21,7 @@
   <button role="menuitem" data-action="row-read">{{icon "check"}}<span>Mark as read</span></button>
   {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}>{{icon "checks"}}<span>Mark this and older as read</span></button>{{end}}
   <button role="menuitem" data-action="row-star">{{icon "star"}}<span>Star</span></button>
+  <button role="menuitem" data-action="row-preserve">{{icon "archive"}}<span>Keep a local copy</span></button>
   {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
 </div>
 {{if or .CanMark .Feed}}
@@ -45,7 +46,7 @@
       <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
       {{if .Summary}}<span class="snippet"><span class="ai" title="Summary written by AI{{if .SummaryModel}} ({{.SummaryModel}}){{end}}">{{icon "ai"}}AI</span>{{.Summary}}</span>
       {{else if .Excerpt}}<span class="snippet">{{.Excerpt}}</span>{{end}}
-      <span class="flags"><span class="starred">{{icon "star"}}</span>{{if .Preserved}}{{icon "archive"}}{{end}}</span>
+      <span class="flags"><span class="starred">{{icon "star"}}</span><span class="kept">{{icon "archive"}}</span></span>
     </span>
   </a>
   <button class="iconbtn kebab" data-action="open-menu" data-menu="row-menu" data-id="{{.ID}}" aria-label="Article actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>

@@ -46,8 +46,16 @@
 {{if ne .Tab "login"}}
 <aside class="sidebar">
   <div class="brand"><img src="/icon/192.png" alt="" width="28" height="28"> Readroom
+    <button class="iconbtn{{if or (eq .Active "manage") (eq .Active "lists")}} on{{end}}" data-action="open-menu" data-menu="settings-menu" aria-label="Settings" aria-haspopup="menu" title="Settings">{{icon "manage"}}</button>
     <button class="iconbtn" data-action="toggle-sidebar" aria-label="Hide sidebar" title="Hide sidebar">{{icon "sidebar"}}</button></div>
+  {{/* Rarely needed, so on wide screens these live behind one button instead of a section of the sidebar. */}}
+  <div id="settings-menu" class="menu" popover role="menu">
+    <a role="menuitem" href="/feeds">{{icon "rss"}}<span>Manage feeds</span></a>
+    <a role="menuitem" href="/readlists">{{icon "lists"}}<span>Manage readlists</span></a>
+    <button role="menuitem" data-action="open-dialog" data-dialog="prefs-dialog">{{icon "type"}}<span>Display</span></button>
+  </div>
   {{template "nav" .}}
+  {{if .Auth}}<form class="signout" method="post" action="/logout"><button>{{icon "logout"}}<span>Sign out</span></button></form>{{end}}
 </aside>
 <button class="iconbtn show-sidebar" data-action="toggle-sidebar" aria-label="Show sidebar" title="Show sidebar">{{icon "sidebar"}}</button>
 {{end}}
@@ -152,12 +160,12 @@
   </ul>
   {{end}}
   {{if not .Groups}}<p class="hint">No feeds yet. Add one under Manage.</p>{{end}}
-  <h2>Settings</h2>
+  <h2 class="settings">Settings</h2>
   <ul class="group foot">
     <li><a href="/feeds" class="{{if eq .Active "manage"}}on{{end}}">{{icon "manage"}}<span>Manage feeds</span></a></li>
     <li><a href="/readlists" class="{{if eq .Active "lists"}}on{{end}}">{{icon "lists"}}<span>Manage readlists</span></a></li>
   </ul>
-  <form method="post" action="/logout">
+  <form class="settings" method="post" action="/logout">
     <ul class="group out">
       <li><button type="button" data-action="open-dialog" data-dialog="prefs-dialog">{{icon "type"}}<span>Display</span></button></li>
       {{if .Auth}}<li><button>{{icon "logout"}}<span>Sign out</span></button></li>{{end}}
