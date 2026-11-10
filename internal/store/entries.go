@@ -13,26 +13,29 @@ import (
 )
 
 type Entry struct {
-	ID            int64   `json:"id"`
-	FeedID        int64   `json:"feed_id"`
-	FeedTitle     string  `json:"feed_title"`
-	Category      string  `json:"category"`
-	GUID          string  `json:"guid"`
-	URL           string  `json:"url"`
-	Title         string  `json:"title"`
-	Author        string  `json:"author"`
-	PublishedAt   string  `json:"published_at"`
-	Excerpt       string  `json:"excerpt"` // short teaser from the feed, or the opening of the text
-	Summary       string  `json:"summary"` // written by a model through the API; empty until then
-	SummaryModel  string  `json:"summary_model"`
-	Image         string  `json:"image"`       // lead image of a picture-only entry, else empty
-	TextLength    int     `json:"text_length"` // plain-text characters in the best available body
-	Read          bool    `json:"read"`
-	Starred       bool    `json:"starred"`
-	Preserved     bool    `json:"preserved"`
-	PreservedAt   *string `json:"preserved_at"`
-	PreserveError string  `json:"preserve_error,omitempty"`
-	CreatedAt     string  `json:"created_at"`
+	ID             int64   `json:"id"`
+	FeedID         int64   `json:"feed_id"`
+	FeedTitle      string  `json:"feed_title"`
+	Category       string  `json:"category"`
+	GUID           string  `json:"guid"`
+	URL            string  `json:"url"`
+	Title          string  `json:"title"`
+	Author         string  `json:"author"`
+	PublishedAt    string  `json:"published_at"`
+	Excerpt        string  `json:"excerpt"` // short teaser from the feed, or the opening of the text
+	Summary        string  `json:"summary"` // written by a model through the API; empty until then
+	SummaryModel   string  `json:"summary_model"`
+	Image          string  `json:"image"`           // lead image of a picture-only entry, else empty
+	TextLength     int     `json:"text_length"`     // plain-text characters in the best available body
+	ReadingMinutes int     `json:"reading_minutes"` // estimated from text_length; 0 when there is too little text to say
+	Read           bool    `json:"read"`
+	ReadAt         *string `json:"read_at"` // when it was marked read; null if unread or not recorded
+	Starred        bool    `json:"starred"`
+	InReadlist     bool    `json:"in_readlist"` // member of at least one readlist
+	Preserved      bool    `json:"preserved"`
+	PreservedAt    *string `json:"preserved_at"`
+	PreserveError  string  `json:"preserve_error,omitempty"`
+	CreatedAt      string  `json:"created_at"`
 
 	// Only filled when a single entry is loaded.
 	Content          string  `json:"content,omitempty"`           // HTML from the feed
@@ -51,13 +54,13 @@ func (e *Entry) Body() string {
 const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
-e.read, e.starred,
+e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id),
 e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
-		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.Starred, &e.Preserved, &e.PreservedAt,
+		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Preserved, &e.PreservedAt,
 		&e.PreserveError, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
@@ -68,7 +71,22 @@ func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) 
 		}
 		return nil, err
 	}
+	e.ReadingMinutes = readingMinutes(e.TextLength)
 	return &e, nil
+}
+
+// readingChars is how many characters of plain text are read in a minute: about
+// 230 words. Counting characters rather than words keeps the estimate fair for
+// languages with longer words.
+const readingChars = 1400
+
+// readingMinutes estimates how long a text of this many characters takes to
+// read. Notes and picture posts too short to plan around get no estimate.
+func readingMinutes(chars int) int {
+	if chars < readingChars/2 {
+		return 0
+	}
+	return (chars + readingChars/2) / readingChars
 }
 
 type EntryFilter struct {
@@ -85,9 +103,8 @@ type EntryFilter struct {
 	Oldest     bool // oldest first instead of newest first
 }
 
-func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
-	var where []string
-	var args []any
+// conditions turns the filter's selection (not its paging or order) into SQL.
+func (f EntryFilter) conditions() (where []string, args []any) {
 	add := func(cond string, a ...any) {
 		where = append(where, cond)
 		args = append(args, a...)
@@ -124,6 +141,26 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 	if q := strings.TrimSpace(f.Query); q != "" {
 		like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q) + "%"
 		add(`(e.title LIKE ? ESCAPE '\' OR e.summary LIKE ? ESCAPE '\' OR e.excerpt LIKE ? ESCAPE '\')`, like, like, like)
+	}
+	return where, args
+}
+
+// CountEntries reports how many entries the filter selects, ignoring paging.
+func (s *Store) CountEntries(ctx context.Context, f EntryFilter) (n int64, err error) {
+	where, args := f.conditions()
+	q := `SELECT count(*) FROM entries e JOIN feeds f ON f.id = e.feed_id`
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	err = s.db.QueryRowContext(ctx, q, args...).Scan(&n)
+	return n, err
+}
+
+func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
+	where, args := f.conditions()
+	add := func(cond string, a ...any) {
+		where = append(where, cond)
+		args = append(args, a...)
 	}
 	cmp, order := "<", "DESC"
 	if f.Oldest {
@@ -253,8 +290,13 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
 	var set []string
 	var args []any
 	if p.Read != nil {
-		set = append(set, "read = ?")
-		args = append(args, b2i(*p.Read))
+		// read_at is stamped when an unread entry becomes read, and cleared with it.
+		if *p.Read {
+			set = append(set, "read_at = CASE WHEN read = 0 THEN ? ELSE read_at END", "read = 1")
+			args = append(args, Now())
+		} else {
+			set = append(set, "read = 0", "read_at = NULL")
+		}
 	}
 	if p.Starred != nil {
 		set = append(set, "starred = ?")
@@ -312,7 +354,8 @@ func (s *Store) CountUnread(ctx context.Context, sc ReadScope) (n int64, err err
 // the caller can offer to undo exactly that change with MarkUnread.
 func (s *Store) MarkRead(ctx context.Context, sc ReadScope) ([]int64, error) {
 	where, args := sc.where()
-	rows, err := s.db.QueryContext(ctx, `UPDATE entries SET read = 1`+where+` RETURNING id`, args...)
+	rows, err := s.db.QueryContext(ctx, `UPDATE entries SET read = 1, read_at = ?`+where+` RETURNING id`,
+		append([]any{Now()}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +378,7 @@ func (s *Store) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
 		return 0, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE entries SET read = 0 WHERE read = 1 AND id IN (SELECT value FROM json_each(?))`, string(list))
+		`UPDATE entries SET read = 0, read_at = NULL WHERE read = 1 AND id IN (SELECT value FROM json_each(?))`, string(list))
 	if err != nil {
 		return 0, err
 	}

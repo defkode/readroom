@@ -13,22 +13,22 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 /* Themes. Light is the default; dark applies when the system asks for it and no
-   theme was chosen on this device, or when chosen explicitly. Colours are kept
-   low-contrast on purpose: warm paper, soft ink, a muted accent. */
+   theme was chosen on this device, or when chosen explicitly. Light and dark are
+   neutral greys with a blue accent, after macOS; sepia is the warm one. Colours
+   are kept low-contrast on purpose: no pure white, no pure black. */
 :root {
-  --bg: #f3f1ec;
-  --surface: #fcfbf8;
-  --surface-2: #e8e5de;
-  --text: #24211d;
-  --muted: #6f6a62;
-  --faint: #a39d93;
-  --sep: rgba(60, 50, 40, .13);
-  --accent: #a8532b;
+  --bg: #f1f1f3;
+  --surface: #fbfbfc;
+  --surface-2: #e4e4e7;
+  --text: #242426;
+  --muted: #6b6b70;
+  --faint: #a0a0a6;
+  --sep: rgba(60, 60, 67, .14);
+  --accent: #1a6fd4;
   --on-accent: #fff;
-  --accent-soft: rgba(168, 83, 43, .11);
-  --danger: #b3261e;
-  --star: #c98a12;
-  --bar: rgba(243, 241, 236, .85);
+  --accent-soft: rgba(26, 111, 212, .1);
+  --danger: #c2372d;
+  --bar: rgba(241, 241, 243, .85);
   --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .06);
   --radius: 14px;
   --sidebar: 288px;
@@ -53,40 +53,39 @@
   --sep: rgba(80, 60, 30, .16);
   --accent: #96502a;
   --accent-soft: rgba(150, 80, 42, .13);
+  --danger: #b3261e;
   --bar: rgba(234, 223, 200, .86);
 }
 :root[data-theme="dark"] {
-  --bg: #1b1a18;
-  --surface: #242321;
-  --surface-2: #32302d;
-  --text: #dedad2;
-  --muted: #9a948a;
-  --faint: #6a655d;
-  --sep: rgba(255, 245, 230, .09);
-  --accent: #d29a78;
-  --on-accent: #23201c;
-  --accent-soft: rgba(210, 154, 120, .14);
-  --danger: #e5857c;
-  --star: #d9a441;
-  --bar: rgba(27, 26, 24, .82);
+  --bg: #1c1c1e;
+  --surface: #262628;
+  --surface-2: #343437;
+  --text: #dcdce0;
+  --muted: #98989e;
+  --faint: #68686d;
+  --sep: rgba(255, 255, 255, .09);
+  --accent: #5ba4f8;
+  --on-accent: #0a1a2e;
+  --accent-soft: rgba(91, 164, 248, .15);
+  --danger: #ee857c;
+  --bar: rgba(28, 28, 30, .82);
   --shadow: 0 0 0 1px rgba(255, 255, 255, .05);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #1b1a18;
-    --surface: #242321;
-    --surface-2: #32302d;
-    --text: #dedad2;
-    --muted: #9a948a;
-    --faint: #6a655d;
-    --sep: rgba(255, 245, 230, .09);
-    --accent: #d29a78;
-    --on-accent: #23201c;
-    --accent-soft: rgba(210, 154, 120, .14);
-    --danger: #e5857c;
-    --star: #d9a441;
-    --bar: rgba(27, 26, 24, .82);
+    --bg: #1c1c1e;
+    --surface: #262628;
+    --surface-2: #343437;
+    --text: #dcdce0;
+    --muted: #98989e;
+    --faint: #68686d;
+    --sep: rgba(255, 255, 255, .09);
+    --accent: #5ba4f8;
+    --on-accent: #0a1a2e;
+    --accent-soft: rgba(91, 164, 248, .15);
+    --danger: #ee857c;
+    --bar: rgba(28, 28, 30, .82);
     --shadow: 0 0 0 1px rgba(255, 255, 255, .05);
     color-scheme: dark;
   }
@@ -111,6 +110,8 @@ h1, h2, p, ul { margin: 0; padding: 0; }
 ul { list-style: none; }
 .icon { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 small { color: var(--muted); font-size: .8em; font-weight: 400; }
+/* The hidden attribute must win over any display a component sets. */
+[hidden] { display: none !important; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 
 /* ---- shell -------------------------------------------------------------- */
@@ -174,6 +175,7 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 10px; background: var(--surface-2); }
 .segmented a { padding: 6px 0; border-radius: 8px; text-align: center; font-size: .86rem; font-weight: 600; color: var(--muted); }
 .segmented a.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.segmented a b { margin-left: 6px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
 .search { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
 .search .icon { width: 17px; height: 17px; }
 .search input { flex: 1; min-width: 0; height: 36px; border: 0; background: none; outline: none; color: var(--text); }
@@ -202,22 +204,29 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .entry .dot { flex: none; width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: var(--accent); }
 .entry.read .dot { background: transparent; }
 .entry .body { display: grid; gap: 3px; min-width: 0; flex: 1; }
-.entry .meta { display: flex; gap: 8px; font-size: .78rem; color: var(--muted); }
-.entry .meta .feed { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.entry .meta { display: flex; align-items: center; gap: 8px; font-size: .78rem; color: var(--muted); }
+.entry .meta .feed { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.entry .meta .mins { flex: none; margin-left: -3px; white-space: nowrap; }
+.entry .meta .mins::before { content: "· "; }
+.entry .meta time { flex: none; margin-left: auto; }
+.entry .meta .flags + time { margin-left: 0; }
 .entry .title { font-size: 1.02rem; font-weight: 650; line-height: 1.28; letter-spacing: -.01em; text-wrap: pretty; }
-.entry.read .title { font-weight: 500; color: var(--muted); }
+/* A read title is lighter, not grey: it must still stand apart from the feed name above and the snippet below. */
+.entry.read .title { font-weight: 500; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
 .entry .snippet { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: .9rem; color: var(--muted); }
 .ai { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; padding: 0 5px 0 3px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: .68rem; font-weight: 700; letter-spacing: .03em; vertical-align: 1px; }
 .ai .icon { width: 12px; height: 12px; }
 .tag .icon { width: 11px; height: 11px; vertical-align: -1px; margin-right: 2px; }
 .summary h2 .icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
 .entry .thumb { order: 2; flex: none; width: 64px; height: 64px; margin-top: 2px; border-radius: 9px; object-fit: cover; object-position: top left; background: var(--surface-2); }
-.entry .flags { display: flex; gap: 6px; margin-top: 2px; color: var(--faint); }
-.entry:not(.starred):not(.kept) .flags, .entry:not(.starred) .flags .starred, .entry:not(.kept) .flags .kept { display: none; }
+/* What the owner did to an article is marked the same way everywhere: accent colour, filled.
+   In a row the marks sit on the meta line, before the date, so they cost no line of their own. */
+.entry .flags { display: flex; align-items: center; gap: 5px; flex: none; margin-left: auto; color: var(--accent); }
+.entry:not(.starred):not(.listed):not(.kept) .flags, .entry:not(.starred) .flags .starred,
+.entry:not(.listed) .flags .listed, .entry:not(.kept) .flags .kept { display: none; }
 .entry .flags span { display: inline-flex; }
-.entry .flags .icon { width: 14px; height: 14px; }
-.entry .flags .starred { color: var(--star); }
-.entry .flags .starred .icon { fill: currentColor; }
+.entry .flags .icon { width: 12px; height: 12px; }
+.entry .flags .icon { fill: currentColor; }
 .more { display: grid; padding: 8px; }
 .empty { margin: 18vh 24px 0; text-align: center; color: var(--muted); text-wrap: balance; }
 
@@ -283,7 +292,6 @@ input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2
 input[type=checkbox]:checked { background: var(--accent); }
 input[type=checkbox]:checked::after { transform: translateX(20px); }
 .checks label span { flex: 1; }
-.since[hidden] { display: none; }
 
 /* ---- display preferences ------------------------------------------------ */
 .prefs fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -299,10 +307,10 @@ input[type=checkbox]:checked::after { transform: translateX(20px); }
 .swatches button { display: grid; gap: 4px; justify-items: center; padding: 10px 4px 8px; border: 2px solid transparent; border-radius: 12px; background: var(--surface); font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; }
 .swatches button[aria-pressed=true] { border-color: var(--accent); color: var(--text); }
 .swatches i { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(128, 128, 128, .35); font: 600 15px/32px Literata, serif; text-align: center; }
-.sw-auto { background: linear-gradient(135deg, #fcfbf8 50%, #242321 50%); color: transparent; }
-.sw-light { background: #fcfbf8; color: #24211d; }
+.sw-auto { background: linear-gradient(135deg, #fbfbfc 50%, #262628 50%); color: transparent; }
+.sw-light { background: #fbfbfc; color: #242426; }
 .sw-sepia { background: #f6ecd7; color: #45382a; }
-.sw-dark { background: #242321; color: #dedad2; }
+.sw-dark { background: #262628; color: #dcdce0; }
 .stepper { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; border-radius: 10px; background: var(--surface-2); }
 .stepper button { height: 40px; border: 0; background: none; font-family: Literata, serif; color: var(--text); cursor: pointer; }
 .stepper button:first-child { font-size: .85rem; }
@@ -318,6 +326,13 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article header h1 { margin: 6px 0 10px; font-family: var(--read-font); font-size: clamp(1.55rem, 5vw, 2.05rem); line-height: 1.18; letter-spacing: -.012em; font-weight: 700; text-wrap: balance; }
 .article .meta { font-size: .86rem; color: var(--muted); }
 .article .meta a { color: var(--accent); font-weight: 600; }
+/* Under the title: when the article was read, and the way back to unread. */
+.article .status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sep); font-size: .84rem; color: var(--muted); }
+.article .status .read { display: inline-flex; align-items: center; gap: 5px; }
+.article .status .icon { width: 15px; height: 15px; color: var(--accent); stroke-width: 2.4; }
+.article .status button { margin-left: auto; padding: 5px 12px; border: 0; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.article .status button:active { opacity: .7; }
+.article .status .err { flex-basis: 100%; }
 .summary { margin: 22px 0; padding: 14px 16px; border-radius: var(--radius); background: var(--accent-soft); }
 .summary h2 { margin-bottom: 6px; font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .summary h2 small { text-transform: none; letter-spacing: 0; }
@@ -346,8 +361,6 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .neighbours .next { grid-column: 2; text-align: right; }
 .neighbours small { font-size: .74rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
 .neighbours span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .92rem; font-weight: 600; line-height: 1.3; }
-.neighbours + footer { margin-top: 24px; }
-.article footer { display: grid; justify-items: start; gap: 10px; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--sep); }
 
 /* ---- login -------------------------------------------------------------- */
 body.bare .topbar { display: none; }
@@ -387,20 +400,22 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
   .sidebar .brand .iconbtn { width: 36px; height: 36px; margin: -4px -4px -4px auto; color: var(--muted); }
   .sidebar .brand .iconbtn + .iconbtn { margin-left: -6px; }
   .sidebar .brand .iconbtn.on { color: var(--accent); }
-  .sidebar .brand .iconbtn .icon { width: 20px; height: 20px; }
+  .sidebar .brand .iconbtn .icon { width: 18px; height: 18px; }
   .sidebar .nav .settings, .sidebar .nav .foot { display: none; } /* in the Settings menu instead */
   /* Signing out is not a setting: it sits alone at the foot of the sidebar. */
   .sidebar .signout { margin-top: auto; padding-top: 16px; }
   .sidebar .signout button {
-    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0 10px;
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 0 10px;
     border-radius: 9px; font-size: .94rem; color: var(--muted); cursor: pointer;
   }
   .sidebar .signout button:hover { background: var(--surface-2); color: var(--text); }
   .sidebar .signout button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .sidebar .signout .icon { width: 20px; height: 20px; }
+  .sidebar .signout .icon { width: 16px; height: 16px; }
   .sidebar .brand .iconbtn:hover, .show-sidebar:hover { background: var(--surface-2); }
   .sidebar .nav .group { background: none; border-radius: 0; }
   .sidebar .nav .group a { min-height: 36px; padding: 0 10px; border-radius: 9px; box-shadow: none !important; font-size: .94rem; }
+  .sidebar .nav .group a, .sidebar .nav .group button { gap: 9px; }
+  .sidebar .nav .group a .icon, .sidebar .nav .group button .icon { width: 16px; height: 16px; }
   .sidebar .nav .group a:hover { background: var(--surface-2); }
   .sidebar .nav .group button { min-height: 36px; padding: 0 10px; border-radius: 9px; font-size: .94rem; }
   .sidebar .nav .group button:hover { background: var(--surface-2); }

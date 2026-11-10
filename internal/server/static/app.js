@@ -61,14 +61,15 @@ const setRead = async (row, read) => {
 const setStar = async (row, starred) => {
   await api('PATCH', `/entries/${row.dataset.id}`, { starred });
   row.classList.toggle('starred', starred);
+  refreshCounts();
 };
 
-// Unread counts live in the navigation and the list menu; take them from a fresh copy of this page.
+// Counts live in the navigation, the view tabs and the list menu; take them from a fresh copy of this page.
 const refreshCounts = async () => {
   const res = await fetch(location.href);
   if (!res.ok) return;
   const fresh = new DOMParser().parseFromString(await res.text(), 'text/html');
-  for (const part of ['.sidebar .nav', '.tabbar', '#page-menu']) {
+  for (const part of ['.sidebar .nav', '.tabbar', '#page-menu', '.segmented']) {
     const from = fresh.querySelector(part), to = document.querySelector(part);
     if (from && to) to.replaceWith(from);
   }
@@ -122,6 +123,18 @@ const actions = {
   },
   async preserve(el) {
     if (await keepCopy(el.dataset.id)) location.reload();
+  },
+  async 'row-lists'(el) {
+    const id = el.dataset.id;
+    closeMenu(el);
+    const { readlists = [] } = await api('GET', `/entries/${id}`);
+    const dialog = document.getElementById('lists-dialog');
+    dialog.querySelectorAll('#list-checks input').forEach((box) => {
+      box.dataset.id = id;
+      box.checked = readlists.includes(+box.dataset.list);
+    });
+    dialog.querySelector('[data-action="create-list"]').dataset.id = id;
+    dialog.showModal();
   },
   // Not awaited: the copy takes a while and the shared menu must stay usable for other rows.
   'row-preserve'(el) {
@@ -279,8 +292,16 @@ document.addEventListener('change', async (e) => {
       // The toolbar's bookmark is filled while the article is in any readlist.
       const member = !!document.querySelector('#list-checks input:checked');
       const button = document.getElementById('lists-button');
-      button.classList.toggle('on', member);
-      button.title = member ? 'In a readlist' : 'Add to a readlist';
+      if (button) {
+        button.classList.toggle('on', member);
+        button.title = member ? 'In a readlist' : 'Add to a readlist';
+      }
+      // Opened from a row of a list: that row's mark and the sidebar counts follow.
+      const row = document.querySelector(`#entries .entry[data-id="${el.dataset.id}"]`);
+      if (row) {
+        row.classList.toggle('listed', member);
+        refreshCounts();
+      }
     }
     if (el.dataset.action === 'import-opml' && el.files[0]) {
       const body = new FormData();
@@ -421,6 +442,9 @@ const restoreCursor = () => {
   const list = readList();
   if (!list || !list.current || list.back !== location.pathname + location.search) return;
   const row = document.querySelector(`#entries .entry[data-id="${list.current}"]`);
+  // Once only: a later visit to this list (a tab, the sidebar) must not jump to that row again.
+  delete list.current;
+  writeList(list);
   if (row) setCursor(row);
 };
 if (document.getElementById('entries')) addEventListener('pageshow', restoreCursor);

@@ -84,7 +84,7 @@ feed deletes its entries and any images no other entry uses. Timestamps are UTC 
 
 - Each feed keeps its articles for `keep_days` days, counted from publication; 0 keeps them forever.
   Expired articles are deleted hourly, and at once when the setting is saved.
-- Never deleted: starred articles, articles in a readlist, and articles with a local copy (made,
+- Never deleted: articles in a readlist, starred articles, and articles with a local copy (made,
   requested, or due under the feed's "keep local copies" setting). Being unread does not protect one.
 - A fetch skips items that would be deleted again, so a feed that still lists old articles does not
   bring them back as unread. A newly added feed therefore starts with at most the last `keep_days` days.
@@ -137,9 +137,14 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 ### Reading, organising, searching
 
-- Views: Unread, All, Starred; by feed, by category, by readlist. Opening an article marks it read;
-  it can be marked unread again.
-- Every row has a ⋮ menu: mark as read or unread, star, keep a local copy, "Mark this and older as read", and in a readlist
+- Views: Unread, All, Starred; by feed, by category, by readlist, each tab showing how many articles
+  it holds. Opening an article marks it read and records when (`read_at`); from the second
+  visit on, the article shows how long ago that was under its title, next to "Mark as unread".
+- Lists and articles show an estimated reading time (about 1,400 characters a minute, from the best
+  text available: the local copy if there is one, else what the feed sent, which may be only a teaser).
+- A row marks what the owner did to its article with the same filled, accent-coloured icons as the
+  article's toolbar, always in the same order: in a readlist, starred, local copy kept.
+- Every row has a ⋮ menu: mark as read or unread, add to a readlist, star, keep a local copy, "Mark this and older as read", and in a readlist
   "Remove from readlist". The list's own ⋮ menu has "Mark all N as read" and, for a
   single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
   current feed or category (or everything), are not offered in a readlist, in Starred or in search
@@ -163,7 +168,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 ## 5. Web app
 
 - Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up, which can be hidden (remembered per device). In the sidebar, Manage feeds, Manage readlists and Display sit in one Settings menu next to the name, and Sign out at the foot; on a phone they are a tab and a section of the Feeds page.
-- **Themes:** light (warm paper), sepia and a soft dark (dark grey, cream text). The default follows
+- **Themes:** light and dark in neutral greys with a blue accent, after macOS, and a warm sepia. The default follows
   the system. Colours are deliberately low-contrast with a muted accent — the first version (pure
   black, saturated orange) was hard to read on a phone.
 - **Display settings**, Kindle-style, from the "Aa" button in an article or "Display" in the menu:
@@ -226,6 +231,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | "Mark this and older as read" instead of checkboxes for partial marking | one tap closes the rest of a list once nothing below is of interest; multi-select is fiddly on a phone |
 | Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
+| Light and dark themes are neutral greys with a blue accent; only sepia is warm | the owner disliked the brown, paper-like palette in both modes and prefers macOS-style greys |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |

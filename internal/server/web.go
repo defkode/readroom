@@ -24,7 +24,14 @@ func (s *Server) loadTemplates() {
 		"ago":  ago,
 		"date": longDate,
 		"day":  func(v *string) string { return dayOf(v) },
-		"html": func(v string) template.HTML { return template.HTML(v) }, // content is sanitised on ingest
+		"deref": func(v *string) string {
+			if v == nil {
+				return ""
+			}
+			return *v
+		},
+		"readWhen": readWhen,
+		"html":     func(v string) template.HTML { return template.HTML(v) }, // content is sanitised on ingest
 		"icon": func(name string) template.HTML {
 			return template.HTML(`<svg class="icon" aria-hidden="true"><use href="#i-` + name + `"/></svg>`)
 		},
@@ -64,6 +71,47 @@ func longDate(v string) string {
 		return v
 	}
 	return t.Local().Format("Monday, 2 January 2006 · 15:04")
+}
+
+// readWhen says how long ago an article was read, e.g. "Read 3 days ago"; the
+// exact time is in the label's tooltip. Articles read before read times were
+// recorded have none.
+func readWhen(v *string) string {
+	if v == nil {
+		return "Read"
+	}
+	t, err := time.Parse(store.TimeFormat, *v)
+	if err != nil {
+		return "Read"
+	}
+	ago := func(n int, unit string) string {
+		if n == 1 {
+			if unit == "hour" {
+				return "Read an hour ago"
+			}
+			return "Read a " + unit + " ago"
+		}
+		return fmt.Sprintf("Read %d %ss ago", n, unit)
+	}
+	const day = 24 * time.Hour
+	switch d := time.Since(t); {
+	case d < time.Minute:
+		return "Read just now"
+	case d < time.Hour:
+		return ago(int(d.Minutes()), "minute")
+	case d < day:
+		return ago(int(d.Hours()), "hour")
+	case d < 2*day:
+		return "Read yesterday"
+	case d < 14*day:
+		return ago(int(d/day), "day")
+	case d < 60*day:
+		return ago(int(d/(7*day)), "week")
+	case d < 365*day:
+		return ago(int(d/(30*day)), "month")
+	default:
+		return ago(int(d/(365*day)), "year")
+	}
 }
 
 func dayOf(v *string) string {
@@ -257,7 +305,24 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		for k, v := range scope {
 			link[k] = v
 		}
-		page.Tabs = append(page.Tabs, viewTab{Label: t[1], URL: "/?" + link.Encode(), Active: view == t[0]})
+		tab := viewTab{Label: t[1], URL: "/?" + link.Encode(), Active: view == t[0]}
+		if q.Get("partial") == "" {
+			// Each tab says how many articles it holds here.
+			count := store.EntryFilter{FeedID: f.FeedID, Category: f.Category, ReadlistID: f.ReadlistID, Query: f.Query}
+			switch t[0] {
+			case "unread":
+				unread := false
+				count.Read = &unread
+			case "starred":
+				starred := true
+				count.Starred = &starred
+			}
+			if tab.Count, err = s.Store.CountEntries(ctx, count); err != nil {
+				s.webFail(w, err)
+				return
+			}
+		}
+		page.Tabs = append(page.Tabs, tab)
 	}
 	if next := cursor(entries, f.Limit); next != "" {
 		more := url.Values{}
@@ -303,12 +368,14 @@ func (s *Server) pageBrowse(w http.ResponseWriter, r *http.Request) {
 type viewTab struct {
 	Label, URL string
 	Active     bool
+	Count      int64 // articles this view holds in the current scope and search
 }
 
 type entryPage struct {
 	Entry     *store.Entry
 	Lists     []listMembership
 	Pending   bool // a local copy was requested and isn't ready yet
+	FirstRead bool // this very visit marked it read, so there is no earlier reading to report
 	Paragraph []string
 }
 
@@ -325,10 +392,12 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		s.webFail(w, err)
 		return
 	}
-	if !e.Read {
+	firstRead := !e.Read
+	if firstRead {
 		read := true
 		s.Store.UpdateEntry(ctx, id, store.EntryPatch{Read: &read})
-		e.Read = true
+		now := store.Now()
+		e.Read, e.ReadAt = true, &now
 	}
 	sh, err := s.shell(r, e.Title, "", "")
 	if err != nil {
@@ -343,7 +412,7 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 	for _, lid := range e.Readlists {
 		member[lid] = true
 	}
-	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary)}
+	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead}
 	for _, l := range sh.Readlists {
 		page.Lists = append(page.Lists, listMembership{Readlist: l, Member: member[l.ID]})
 	}
@@ -440,8 +509,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f3f1ec",
-  "theme_color": "#f3f1ec",
+  "background_color": "#f1f1f3",
+  "theme_color": "#f1f1f3",
   "icons": [
     {"src": "/icon/192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
     {"src": "/icon/512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}

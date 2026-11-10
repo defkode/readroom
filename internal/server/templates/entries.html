@@ -5,7 +5,7 @@
 {{define "content"}}{{with .Page}}
 <div class="filters">
   <div class="segmented" role="tablist">
-    {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}</a>{{end}}
+    {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}{{if .Count}}<b>{{.Count}}</b>{{end}}</a>{{end}}
   </div>
   <form class="search" action="/" method="get" role="search">
     {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
@@ -20,10 +20,23 @@
 <div id="row-menu" class="menu" popover role="menu">
   <button role="menuitem" data-action="row-read">{{icon "check"}}<span>Mark as read</span></button>
   {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}>{{icon "checks"}}<span>Mark this and older as read</span></button>{{end}}
+  <button role="menuitem" data-action="row-lists">{{icon "lists"}}<span>Add to readlist…</span></button>
+  {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
   <button role="menuitem" data-action="row-star">{{icon "star"}}<span>Star</span></button>
   <button role="menuitem" data-action="row-preserve">{{icon "archive"}}<span>Keep a local copy</span></button>
-  {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
 </div>
+{{/* The same sheet as in an article; the script ticks the lists the chosen row's article is in. */}}
+<dialog id="lists-dialog" class="sheet">
+  <h2>Readlists</h2>
+  <ul class="list checks" id="list-checks">
+    {{range $.Readlists}}<li><label><input type="checkbox" data-action="toggle-list" data-list="{{.ID}}"><span>{{.Name}}</span></label></li>{{end}}
+  </ul>
+  <form class="row" data-action="create-list">
+    <input name="name" placeholder="New readlist" required autocomplete="off">
+    <button class="btn">Add</button>
+  </form>
+  <form method="dialog"><button class="btn quiet wide">Done</button></form>
+</dialog>
 {{if or .CanMark .Feed}}
 <div id="page-menu" class="menu" popover role="menu">
   {{if .CanMark}}<button role="menuitem" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if not .Unread}} disabled{{end}}>{{icon "checks"}}<span>{{if .Unread}}Mark all {{.Unread}} as read{{else}}Nothing unread here{{end}}</span></button>{{end}}
@@ -37,16 +50,15 @@
 
 {{define "items"}}
 {{range .Entries}}
-<li class="entry{{if .Read}} read{{end}}{{if .Starred}} starred{{end}}{{if .Preserved}} kept{{end}}" data-id="{{.ID}}">
+<li class="entry{{if .Read}} read{{end}}{{if .Starred}} starred{{end}}{{if .InReadlist}} listed{{end}}{{if .Preserved}} kept{{end}}" data-id="{{.ID}}">
   <a href="/entries/{{.ID}}">
     <span class="dot" aria-hidden="true"></span>
     {{if .Image}}<img class="thumb" src="{{.Image}}" alt="" loading="lazy" decoding="async">{{end}}
     <span class="body">
-      <span class="meta"><span class="feed">{{.FeedTitle}}</span><time datetime="{{.PublishedAt}}">{{ago .PublishedAt}}</time></span>
+      <span class="meta"><span class="feed">{{.FeedTitle}}</span>{{if .ReadingMinutes}}<span class="mins">{{.ReadingMinutes}} min</span>{{end}}<span class="flags"><span class="listed">{{icon "lists"}}</span><span class="starred">{{icon "star"}}</span><span class="kept">{{icon "archive"}}</span></span><time datetime="{{.PublishedAt}}">{{ago .PublishedAt}}</time></span>
       <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
       {{if .Summary}}<span class="snippet"><span class="ai" title="Summary written by AI{{if .SummaryModel}} ({{.SummaryModel}}){{end}}">{{icon "ai"}}AI</span>{{.Summary}}</span>
       {{else if .Excerpt}}<span class="snippet">{{.Excerpt}}</span>{{end}}
-      <span class="flags"><span class="starred">{{icon "star"}}</span><span class="kept">{{icon "archive"}}</span></span>
     </span>
   </a>
   <button class="iconbtn kebab" data-action="open-menu" data-menu="row-menu" data-id="{{.ID}}" aria-label="Article actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>

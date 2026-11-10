@@ -1,7 +1,7 @@
 {{define "actions"}}{{with .Page}}{{with .Entry}}
 <button class="iconbtn aa" data-action="open-dialog" data-dialog="prefs-dialog" aria-label="Display settings" title="Display settings">Aa</button>
-<button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
 <button class="iconbtn toggle{{if .Readlists}} on{{end}}" id="lists-button" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Readlists" title="{{if .Readlists}}In a readlist{{else}}Add to a readlist{{end}}">{{icon "lists"}}</button>
+<button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
 <button class="iconbtn toggle{{if .Preserved}} on{{end}}" data-action="preserve" data-id="{{.ID}}" aria-label="Keep a local copy" title="{{if .Preserved}}Saved locally{{else}}Keep a local copy{{end}}"{{if .Preserved}} disabled{{end}}>{{icon "archive"}}</button>
 <button class="iconbtn" data-action="open-dialog" data-dialog="export-dialog" aria-label="Export" title="Export">{{icon "download"}}</button>
 {{if .URL}}<a class="iconbtn" href="{{.URL}}" target="_blank" rel="noopener noreferrer" aria-label="Open original" title="Open original">{{icon "external"}}</a>{{end}}
@@ -13,7 +13,12 @@
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
     <h1>{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</h1>
-    <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .Preserved}} · saved locally{{end}}</p>
+    <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .ReadingMinutes}} · {{.ReadingMinutes}} min read{{end}}{{if .Preserved}} · saved locally{{end}}</p>
+    <p class="status">
+      {{if not $.Page.FirstRead}}<span class="read" title="{{if .ReadAt}}Read on {{date (deref .ReadAt)}}{{else}}Read before reading times were recorded{{end}}">{{icon "check"}}{{readWhen .ReadAt}}</span>{{end}}
+      <button data-action="mark-unread" data-id="{{.ID}}">Mark as unread</button>
+      {{if .PreserveError}}<span class="err">Local copy failed: {{.PreserveError}}</span>{{end}}
+    </p>
   </header>
   {{end}}
   {{if .Paragraph}}
@@ -28,10 +33,6 @@
     <a class="prev" rel="prev" hidden><small>Previous</small><span></span></a>
     <a class="next" rel="next" hidden><small>Next</small><span></span></a>
   </nav>
-  <footer>
-    {{if .Entry.PreserveError}}<p class="hint">Local copy failed: {{.Entry.PreserveError}}</p>{{end}}
-    <button class="btn quiet" data-action="mark-unread" data-id="{{.Entry.ID}}">Mark as unread</button>
-  </footer>
 </article>
 
 <dialog id="lists-dialog" class="sheet">

@@ -106,6 +106,10 @@ UPDATE entries SET excerpt = '', text_length = -1;
 -- Articles older than this many days are deleted (see PruneExpired); 0 keeps them forever.
 ALTER TABLE feeds ADD COLUMN keep_days INTEGER NOT NULL DEFAULT 365;
 `,
+	`
+-- When the entry was marked read; NULL while unread, and for entries read before this was recorded.
+ALTER TABLE entries ADD COLUMN read_at TEXT;
+`,
 }
 
 func Open(path string) (*Store, error) {

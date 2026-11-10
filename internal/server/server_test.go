@@ -245,6 +245,16 @@ func TestFeedLifecycle(t *testing.T) {
 	if e.Summary != "A greeting." || !e.Read || !e.Starred {
 		t.Fatalf("patch entry: %+v", e)
 	}
+	// Reading stamps the time; marking unread clears it.
+	if e.ReadAt == nil {
+		t.Fatal("read entry has no read_at")
+	}
+	var unread store.Entry
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", newID), map[string]any{"read": false}, &unread)
+	if unread.Read || unread.ReadAt != nil {
+		t.Fatalf("after marking unread: read %v, read_at %v", unread.Read, unread.ReadAt)
+	}
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", newID), map[string]any{"read": true}, &e)
 	// How long a feed keeps its articles is a setting; the test feed keeps them forever.
 	var kept store.Feed
 	a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": 3650}, &kept)
@@ -282,6 +292,13 @@ func TestFeedLifecycle(t *testing.T) {
 	a.call("POST", "/api/v1/readlists", map[string]any{"name": "Weekend"}, &rl)
 	if resp := a.call("PUT", fmt.Sprintf("/api/v1/readlists/%d/entries/%d", rl.ID, newID), nil, nil); resp.StatusCode != 204 {
 		t.Fatalf("add to readlist: %d", resp.StatusCode)
+	}
+	// Lists report membership, so a row can mark it like a star or a local copy.
+	a.call("GET", "/api/v1/entries", nil, &list)
+	for _, item := range list.Entries {
+		if item.InReadlist != (item.ID == newID) {
+			t.Fatalf("entry %d: in_readlist = %v", item.ID, item.InReadlist)
+		}
 	}
 	if resp := a.call("PUT", fmt.Sprintf("/api/v1/readlists/%d/entries/999", rl.ID), nil, nil); resp.StatusCode != 404 {
 		t.Fatalf("add missing entry: got %d, want 404", resp.StatusCode)
