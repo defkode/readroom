@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -50,6 +51,7 @@ func main() {
                                    random token on first run
                 READROOM_INTERVAL  how often feeds are polled (default 30m)
                 READROOM_LOG       info or debug             (default info)
+                READROOM_SUMMARY_MIN_CHARS  shortest article queued for an AI summary (default 1500)
   summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"`)
 		os.Exit(2)
 	}
@@ -123,9 +125,17 @@ func serve() error {
 	if token == "" {
 		log.Warn("READROOM_TOKEN is not set: the UI and API are open to anyone who can reach this port")
 	}
+	app := server.New(st, fetcher, token, log)
+	if v := os.Getenv("READROOM_SUMMARY_MIN_CHARS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return errors.New("READROOM_SUMMARY_MIN_CHARS must be a non-negative number")
+		}
+		app.SummaryMinChars = n
+	}
 	srv := &http.Server{
 		Addr:              env("READROOM_ADDR", ":8090"),
-		Handler:           server.New(st, fetcher, token, log).Handler(),
+		Handler:           app.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

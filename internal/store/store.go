@@ -90,6 +90,18 @@ CREATE TABLE readlist_entries (
 	PRIMARY KEY (readlist_id, entry_id)
 );
 `,
+	`
+ALTER TABLE feeds ADD COLUMN ai_summary INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE entries ADD COLUMN excerpt TEXT NOT NULL DEFAULT '';
+-- Plain-text length of the best available body; -1 until computed.
+ALTER TABLE entries ADD COLUMN text_length INTEGER NOT NULL DEFAULT -1;
+`,
+	`
+-- Lead image of entries that are mostly a picture, shown as a thumbnail in lists.
+ALTER TABLE entries ADD COLUMN image TEXT NOT NULL DEFAULT '';
+-- Excerpts are now built from the first real paragraph: recompute them all.
+UPDATE entries SET excerpt = '', text_length = -1;
+`,
 }
 
 func Open(path string) (*Store, error) {
@@ -107,6 +119,10 @@ func Open(path string) (*Store, error) {
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if err := s.backfillText(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("backfill: %w", err)
 	}
 	return s, nil
 }

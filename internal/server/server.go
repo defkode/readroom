@@ -32,11 +32,14 @@ type Server struct {
 	Token   string // empty disables authentication
 	Log     *slog.Logger
 
+	// SummaryMinChars is the shortest article text worth an AI summary.
+	SummaryMinChars int
+
 	pages map[string]*template.Template
 }
 
 func New(st *store.Store, f *fetch.Fetcher, token string, log *slog.Logger) *Server {
-	s := &Server{Store: st, Fetcher: f, Token: token, Log: log}
+	s := &Server{Store: st, Fetcher: f, Token: token, Log: log, SummaryMinChars: 1500}
 	s.loadTemplates()
 	return s
 }
@@ -69,6 +72,9 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PATCH /api/v1/entries/{id}", s.apiUpdateEntry)
 	api.HandleFunc("POST /api/v1/entries/{id}/preserve", s.apiPreserveEntry)
 	api.HandleFunc("GET /api/v1/entries/{id}/export", s.apiExportEntry)
+	api.HandleFunc("PUT /api/v1/entries/{id}/summary", s.apiSetSummary)
+	api.HandleFunc("DELETE /api/v1/entries/{id}/summary", s.apiClearSummary)
+	api.HandleFunc("GET /api/v1/summaries/pending", s.apiPendingSummaries)
 
 	api.HandleFunc("GET /api/v1/readlists", s.apiReadlists)
 	api.HandleFunc("POST /api/v1/readlists", s.apiCreateReadlist)
@@ -100,7 +106,13 @@ func (s *Server) Handler() http.Handler {
 
 func cacheStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=300")
+		if strings.HasPrefix(r.URL.Path, "fonts/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Small files on a local network: always revalidate, so a new
+			// version of the app never runs with a stale stylesheet or script.
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		h.ServeHTTP(w, r)
 	})
 }

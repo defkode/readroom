@@ -1,4 +1,5 @@
 {{define "actions"}}{{with .Page}}{{with .Entry}}
+<button class="iconbtn aa" data-action="open-dialog" data-dialog="prefs-dialog" aria-label="Display settings" title="Display settings">Aa</button>
 <button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
 <button class="iconbtn" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Add to readlist" title="Readlists">{{icon "lists"}}</button>
 <button class="iconbtn toggle{{if .Preserved}} on{{end}}" data-action="preserve" data-id="{{.ID}}" aria-label="Keep a local copy" title="{{if .Preserved}}Saved locally{{else}}Keep a local copy{{end}}"{{if .Preserved}} disabled{{end}}>{{icon "archive"}}</button>
@@ -17,7 +18,7 @@
   {{end}}
   {{if .Paragraph}}
   <section class="summary">
-    <h2>Summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>
+    <h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>
     {{range .Paragraph}}<p>{{.}}</p>{{end}}
   </section>
   {{end}}

@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +65,9 @@ func newApp(t *testing.T) *app {
 	}
 	t.Cleanup(func() { st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(st, fetch.New(st, time.Hour, log), "secret", log).Handler())
+	server := New(st, fetch.New(st, time.Hour, log), "secret", log)
+	server.SummaryMinChars = 600 // the test article is about 1,100 characters
+	srv := httptest.NewServer(server.Handler())
 	t.Cleanup(srv.Close)
 	return &app{t: t, url: srv.URL}
 }
@@ -180,6 +183,57 @@ func TestFeedLifecycle(t *testing.T) {
 		t.Fatalf("asset: %d bytes, type %q", len(got), img.Header.Get("Content-Type"))
 	}
 
+	// Excerpts: the feed's teaser where it has a short one.
+	if e.Excerpt != "Short excerpt." || old.Excerpt != "Old excerpt." {
+		t.Fatalf("excerpts: %q and %q", e.Excerpt, old.Excerpt)
+	}
+	if e.TextLength < 900 {
+		t.Fatalf("text_length after preservation: %d", e.TextLength)
+	}
+
+	// The summary queue is empty until the feed opts in.
+	var queue struct {
+		Entries   []pendingSummary
+		Remaining int
+	}
+	a.call("GET", "/api/v1/summaries/pending", nil, &queue)
+	if len(queue.Entries) != 0 || queue.Remaining != 0 {
+		t.Fatalf("queue before opting in: %+v", queue)
+	}
+	a.call("PATCH", "/api/v1/feeds/1", map[string]any{"ai_summary": true}, &feed)
+	if !feed.AISummary {
+		t.Fatal("ai_summary not stored")
+	}
+	// Both articles are preserved and long enough now; newest first, plain text, truncated on request.
+	a.call("GET", "/api/v1/summaries/pending?max_chars=200", nil, &queue)
+	if len(queue.Entries) != 2 || queue.Remaining != 2 || queue.Entries[0].ID != newID {
+		t.Fatalf("queue: %+v", queue)
+	}
+	first := queue.Entries[0]
+	if !first.Truncated || len([]rune(first.Text)) != 200 || strings.Contains(first.Text, "<") ||
+		!strings.Contains(first.Text, "full text of the article") || first.Title != "Hello & welcome" {
+		t.Fatalf("queue item: %+v", first)
+	}
+	// Writing a summary takes the article out of the queue; deleting it puts it back.
+	if resp := a.call("PUT", fmt.Sprintf("/api/v1/entries/%d/summary", oldID),
+		map[string]any{"summary": "Old news.", "model": "test"}, nil); resp.StatusCode != 200 {
+		t.Fatalf("put summary: %d", resp.StatusCode)
+	}
+	if resp := a.call("PUT", fmt.Sprintf("/api/v1/entries/%d/summary", oldID), map[string]any{"summary": " "}, nil); resp.StatusCode != 400 {
+		t.Fatalf("empty summary: got %d, want 400", resp.StatusCode)
+	}
+	a.call("GET", "/api/v1/summaries/pending", nil, &queue)
+	if len(queue.Entries) != 1 || queue.Entries[0].ID != newID {
+		t.Fatalf("queue after one summary: %+v", queue)
+	}
+	if resp := a.call("DELETE", fmt.Sprintf("/api/v1/entries/%d/summary", oldID), nil, nil); resp.StatusCode != 204 {
+		t.Fatalf("delete summary: %d", resp.StatusCode)
+	}
+	a.call("GET", "/api/v1/summaries/pending?feed_id=1", nil, &queue)
+	if queue.Remaining != 2 {
+		t.Fatalf("queue after deleting the summary: %+v", queue)
+	}
+
 	// Summary, read and starred are set through PATCH.
 	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", newID),
 		map[string]any{"summary": "A greeting.", "summary_model": "test", "read": true, "starred": true}, &e)
@@ -244,8 +298,22 @@ func TestFeedLifecycle(t *testing.T) {
 			}
 			continue
 		}
+		// The list marks model-written summaries and falls back to the feed's teaser.
+		if path == "/?view=all" && (!bytes.Contains(page, []byte(`class="ai"`)) || !bytes.Contains(page, []byte("A greeting.")) ||
+			!bytes.Contains(page, []byte("Old excerpt."))) {
+			t.Errorf("GET %s: expected an AI-marked summary and a plain excerpt", path)
+		}
 		if resp.StatusCode != 200 || len(page) == 0 || bytes.Contains(page, []byte("template error")) {
 			t.Errorf("GET %s: status %d, %d bytes", path, resp.StatusCode, len(page))
+		}
+		// Pages must be self-contained: nothing loaded from another host, enforced by CSP.
+		if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+			if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "font-src 'self'") {
+				t.Errorf("GET %s: missing content security policy (%q)", path, csp)
+			}
+			if m := externalAsset.Find(page); m != nil {
+				t.Errorf("GET %s: loads an external asset: %s", path, m)
+			}
 		}
 	}
 
@@ -281,6 +349,9 @@ func TestOPMLRoundTrip(t *testing.T) {
 		t.Fatalf("exported OPML: %v\n%s", err, out)
 	}
 }
+
+// externalAsset matches a stylesheet, script or font pulled from another host.
+var externalAsset = regexp.MustCompile(`<(?:link|script)[^>]+(?:href|src)="(?:https?:)?//[^"]*"|@import|url\((?:https?:)?//`)
 
 // checkEPUB verifies the container layout and that every XML part is well-formed.
 func checkEPUB(t *testing.T, data []byte) {

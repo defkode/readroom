@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{.Title}} · Readroom</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f1ec">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -16,6 +14,7 @@
 <link rel="apple-touch-icon" href="/icon/180.png">
 <link rel="icon" type="image/png" href="/icon/192.png">
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/prefs.js"></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body class="{{if eq .Tab "login"}}bare{{end}}{{if .Reader}} reader{{end}}">
@@ -34,6 +33,9 @@
   <symbol id="i-archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M10 3l1.9 5.1L17 10l-5.1 1.9L10 17l-1.9-5.1L3 10l5.1-1.9zM18.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></symbol>
 </svg>
 
@@ -61,6 +63,64 @@
   <a href="/readlists" class="{{if eq .Tab "lists"}}on{{end}}">{{icon "lists"}}<span>Lists</span></a>
   <a href="/feeds" class="{{if eq .Tab "manage"}}on{{end}}">{{icon "manage"}}<span>Manage</span></a>
 </nav>
+{{end}}
+{{if ne .Tab "login"}}
+<dialog id="prefs-dialog" class="sheet prefs">
+  <h2>Display</h2>
+  <fieldset>
+    <legend>Theme</legend>
+    <div class="swatches" data-pref="theme">
+      <button type="button" value="auto"><i class="sw-auto">A</i>Auto</button>
+      <button type="button" value="light"><i class="sw-light">A</i>Light</button>
+      <button type="button" value="sepia"><i class="sw-sepia">A</i>Sepia</button>
+      <button type="button" value="dark"><i class="sw-dark">A</i>Dark</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Font</legend>
+    <div class="choices" data-pref="font">
+      <button type="button" value="literata" class="f-literata">Literata</button>
+      <button type="button" value="serif" class="f-serif">Classic serif</button>
+      <button type="button" value="sans">Sans</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Text size</legend>
+    <div class="stepper" data-pref="size">
+      <button type="button" value="-1" aria-label="Smaller text">A</button>
+      <output></output>
+      <button type="button" value="1" aria-label="Larger text">A</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Line spacing</legend>
+    <div class="choices" data-pref="leading">
+      <button type="button" value="tight">Tight</button>
+      <button type="button" value="normal">Normal</button>
+      <button type="button" value="loose">Loose</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Page width</legend>
+    <div class="choices" data-pref="width">
+      <button type="button" value="narrow">Narrow</button>
+      <button type="button" value="medium">Medium</button>
+      <button type="button" value="wide">Wide</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Alignment</legend>
+    <div class="choices" data-pref="align">
+      <button type="button" value="left">Left</button>
+      <button type="button" value="justify">Justified</button>
+    </div>
+  </fieldset>
+  <p class="hint">Saved on this device only, so your phone and computer can differ.</p>
+  <div class="buttons">
+    <button class="btn" type="button" data-action="close-dialog" autofocus>Done</button>
+    <button class="btn quiet" type="button" data-action="reset-prefs">Reset to defaults</button>
+  </div>
+</dialog>
 {{end}}
 <div id="toast" role="status"></div>
 </body>
@@ -90,5 +150,11 @@
     <li><a href="/feeds" class="{{if eq .Active "manage"}}on{{end}}">{{icon "manage"}}<span>Manage feeds</span></a></li>
     <li><a href="/readlists" class="{{if eq .Active "lists"}}on{{end}}">{{icon "lists"}}<span>Manage readlists</span></a></li>
   </ul>
+  <form method="post" action="/logout">
+    <ul class="group out">
+      <li><button type="button" data-action="open-dialog" data-dialog="prefs-dialog">{{icon "type"}}<span>Display</span></button></li>
+      {{if .Auth}}<li><button>{{icon "logout"}}<span>Sign out</span></button></li>{{end}}
+    </ul>
+  </form>
 </nav>
 {{end}}

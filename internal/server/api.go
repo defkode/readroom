@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"readroom/internal/export"
+	"readroom/internal/htmlx"
 	"readroom/internal/store"
 )
 
@@ -55,6 +56,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 		Category      string `json:"category"`
 		Preserve      bool   `json:"preserve"`
 		PreserveSince string `json:"preserve_since"`
+		AISummary     bool   `json:"ai_summary"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -71,7 +73,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
 		URL: feedURL, CustomTitle: strings.TrimSpace(in.Title), Category: strings.TrimSpace(in.Category),
-		Preserve: in.Preserve, PreserveSince: since,
+		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary,
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -131,6 +133,13 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			p.Preserve = &v
+		case "ai_summary":
+			var v bool
+			if json.Unmarshal(raw, &v) != nil {
+				bad(field)
+				return
+			}
+			p.AISummary = &v
 		case "preserve_since":
 			var v *string
 			if json.Unmarshal(raw, &v) != nil {
@@ -309,6 +318,83 @@ func (s *Server) apiPreserveEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Fetcher.Kick()
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
+// --- AI summaries -----------------------------------------------------------
+
+// pendingSummary is one unit of work for a summarising script or agent: all it
+// needs to prompt a model, with no HTML to parse and no second request.
+type pendingSummary struct {
+	ID          int64  `json:"id"`
+	FeedID      int64  `json:"feed_id"`
+	FeedTitle   string `json:"feed_title"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	PublishedAt string `json:"published_at"`
+	TextLength  int    `json:"text_length"` // of the whole article, before truncation
+	Text        string `json:"text"`        // plain text, at most max_chars characters
+	Truncated   bool   `json:"truncated"`
+}
+
+func (s *Server) apiPendingSummaries(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	maxChars, _ := strconv.Atoi(q.Get("max_chars"))
+	if maxChars <= 0 {
+		maxChars = 24000
+	}
+	feedID, _ := strconv.ParseInt(q.Get("feed_id"), 10, 64)
+	entries, total, err := s.Store.PendingSummaries(r.Context(), s.SummaryMinChars, feedID, limit)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	out := make([]pendingSummary, 0, len(entries))
+	for _, e := range entries {
+		text := []rune(htmlx.Text(e.Body()))
+		item := pendingSummary{ID: e.ID, FeedID: e.FeedID, FeedTitle: e.FeedTitle, Title: e.Title, URL: e.URL,
+			PublishedAt: e.PublishedAt, TextLength: e.TextLength}
+		if len(text) > maxChars {
+			text, item.Truncated = text[:maxChars], true
+		}
+		item.Text = string(text)
+		out = append(out, item)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": out, "remaining": total, "min_chars": s.SummaryMinChars})
+}
+
+func (s *Server) apiSetSummary(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Summary string `json:"summary"`
+		Model   string `json:"model"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if strings.TrimSpace(in.Summary) == "" {
+		writeError(w, http.StatusBadRequest, "summary is required; use DELETE to remove one")
+		return
+	}
+	if err := s.Store.UpdateEntry(r.Context(), pathID(r, "id"),
+		store.EntryPatch{Summary: &in.Summary, SummaryModel: &in.Model}); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.apiEntry(w, r)
+}
+
+// apiClearSummary removes a summary, which puts the entry back in the queue.
+func (s *Server) apiClearSummary(w http.ResponseWriter, r *http.Request) {
+	empty := ""
+	if err := s.Store.UpdateEntry(r.Context(), pathID(r, "id"),
+		store.EntryPatch{Summary: &empty, SummaryModel: &empty}); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 var unsafeName = regexp.MustCompile(`[^\p{L}\p{N} ._-]+`)

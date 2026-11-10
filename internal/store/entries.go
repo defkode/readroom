@@ -6,6 +6,9 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
+	"readroom/internal/htmlx"
 )
 
 type Entry struct {
@@ -18,8 +21,11 @@ type Entry struct {
 	Title         string  `json:"title"`
 	Author        string  `json:"author"`
 	PublishedAt   string  `json:"published_at"`
-	Summary       string  `json:"summary"`
+	Excerpt       string  `json:"excerpt"` // short teaser from the feed, or the opening of the text
+	Summary       string  `json:"summary"` // written by a model through the API; empty until then
 	SummaryModel  string  `json:"summary_model"`
+	Image         string  `json:"image"`       // lead image of a picture-only entry, else empty
+	TextLength    int     `json:"text_length"` // plain-text characters in the best available body
 	Read          bool    `json:"read"`
 	Starred       bool    `json:"starred"`
 	Preserved     bool    `json:"preserved"`
@@ -43,13 +49,14 @@ func (e *Entry) Body() string {
 
 const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
-e.guid, e.url, e.title, e.author, e.published_at, e.summary, e.summary_model, e.read, e.starred,
+e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
+e.read, e.starred,
 e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
-		&e.PublishedAt, &e.Summary, &e.SummaryModel, &e.Read, &e.Starred, &e.Preserved, &e.PreservedAt,
+		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.Starred, &e.Preserved, &e.PreservedAt,
 		&e.PreserveError, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
@@ -115,7 +122,7 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 	}
 	if q := strings.TrimSpace(f.Query); q != "" {
 		like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q) + "%"
-		add(`(e.title LIKE ? ESCAPE '\' OR e.summary LIKE ? ESCAPE '\')`, like, like)
+		add(`(e.title LIKE ? ESCAPE '\' OR e.summary LIKE ? ESCAPE '\' OR e.excerpt LIKE ? ESCAPE '\')`, like, like, like)
 	}
 	cmp, order := "<", "DESC"
 	if f.Oldest {
@@ -177,6 +184,7 @@ FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE e.id = ?`, id), true)
 // NewEntry is an item parsed from a feed.
 type NewEntry struct {
 	GUID, URL, Title, Author, PublishedAt, Content string
+	Excerpt                                        string // short teaser published by the feed, if it has one
 }
 
 // AddEntries inserts items not seen before and returns how many were new.
@@ -187,20 +195,34 @@ func (s *Store) AddEntries(ctx context.Context, feedID int64, items []NewEntry) 
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO entries (feed_id, guid, url, title, author, published_at, content, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
+INSERT INTO entries (feed_id, guid, url, title, author, published_at, content, excerpt, image, text_length, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 	now, added := Now(), 0
 	for _, it := range items {
-		res, err := stmt.ExecContext(ctx, feedID, it.GUID, it.URL, it.Title, it.Author, it.PublishedAt, it.Content, now)
+		excerpt, image, length := derive(it.Title, it.Content)
+		if it.Excerpt != "" {
+			excerpt = it.Excerpt
+		}
+		res, err := stmt.ExecContext(ctx, feedID, it.GUID, it.URL, it.Title, it.Author, it.PublishedAt, it.Content,
+			excerpt, image, length, now)
 		if err != nil {
 			return 0, err
 		}
 		n, _ := res.RowsAffected()
 		added += int(n)
+		if n == 0 && it.Excerpt != "" {
+			// Already stored: adopt the feed's teaser if we only had our own lead
+			// (entries saved before teasers were kept), or if the feed changed it.
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE entries SET excerpt = ? WHERE feed_id = ? AND guid = ? AND excerpt != ?`,
+				it.Excerpt, feedID, it.GUID, it.Excerpt); err != nil {
+				return 0, err
+			}
+		}
 	}
 	return added, tx.Commit()
 }
@@ -258,6 +280,123 @@ func (s *Store) MarkAllRead(ctx context.Context, feedID int64, category *string)
 	return res.RowsAffected()
 }
 
+// --- summaries --------------------------------------------------------------
+
+// excerptLead is how much of the text stands in when a feed has no teaser.
+const excerptLead = 280
+
+// pictureOnly is the text length under which an entry with an image counts as a
+// picture post (a comic, a photo) and gets a thumbnail in lists.
+const pictureOnly = 200
+
+// derive computes what lists show for an entry from its title and body.
+func derive(title, content string) (excerpt, image string, length int) {
+	length = utf8.RuneCountInString(htmlx.Flat(content))
+	excerpt = htmlx.Excerpt(content, title, excerptLead)
+	if length < pictureOnly {
+		image, _ = htmlx.FirstImage(content)
+	}
+	return excerpt, image, length
+}
+
+// needsCopyFirst matches entries whose full local copy is still on its way, so a
+// summary written now would be based on the feed's excerpt alone.
+const needsCopyFirst = `(e.preserved_at IS NULL AND e.preserve_attempts < ` + "3" + `
+  AND (e.preserve_requested = 1
+       OR (f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since))))`
+
+const pendingSummaryWhere = `f.ai_summary = 1 AND e.summary = '' AND e.text_length >= ? AND NOT ` + needsCopyFirst
+
+// PendingSummaries lists entries waiting for an AI summary, newest first: their
+// feed has AI summaries on, they have none yet, and the text is at least
+// minChars long. It also returns how many are waiting in total.
+func (s *Store) PendingSummaries(ctx context.Context, minChars int, feedID int64, limit int) ([]*Entry, int, error) {
+	where, args := pendingSummaryWhere, []any{minChars}
+	if feedID != 0 {
+		where += ` AND e.feed_id = ?`
+		args = append(args, feedID)
+	}
+	var total int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
+FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+where+`
+ORDER BY e.published_at DESC, e.id DESC LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	entries := []*Entry{}
+	for rows.Next() {
+		e, err := scanEntry(rows, true)
+		if err != nil {
+			return nil, 0, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, total, rows.Err()
+}
+
+// backfillText computes excerpt, thumbnail and text length for entries stored
+// before those columns existed, or after the way they are derived changed.
+func (s *Store) backfillText() error {
+	for {
+		rows, err := s.db.Query(`SELECT id, title, content, preserved_content, excerpt FROM entries WHERE text_length < 0 LIMIT 200`)
+		if err != nil {
+			return err
+		}
+		type row struct {
+			id             int64
+			excerpt, image string
+			length         int
+		}
+		var batch []row
+		for rows.Next() {
+			var id int64
+			var title, content, kept string
+			var preserved *string
+			if err := rows.Scan(&id, &title, &content, &preserved, &kept); err != nil {
+				rows.Close()
+				return err
+			}
+			excerpt, image, length := derive(title, content)
+			if kept != "" {
+				excerpt = kept
+			}
+			if preserved != nil && *preserved != "" {
+				length = utf8.RuneCountInString(htmlx.Flat(*preserved))
+				if local, _ := htmlx.FirstImage(*preserved); image != "" && local != "" {
+					image = local
+				}
+			}
+			batch = append(batch, row{id, excerpt, image, length})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(batch) == 0 {
+			return nil
+		}
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		for _, r := range batch {
+			if _, err := tx.Exec(`UPDATE entries SET excerpt = ?, image = ?, text_length = ? WHERE id = ?`,
+				r.excerpt, r.image, r.length, r.id); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+}
+
 // --- preservation -----------------------------------------------------------
 
 const maxPreserveAttempts = 3
@@ -300,6 +439,8 @@ type Asset struct {
 
 // SavePreserved stores the full article HTML and the images it references.
 func (s *Store) SavePreserved(ctx context.Context, id int64, html string, assets []Asset) error {
+	// A picture-only entry's thumbnail should come from the local copy too.
+	localImage, _ := htmlx.FirstImage(html)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -318,8 +459,9 @@ func (s *Store) SavePreserved(ctx context.Context, id int64, html string, assets
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `
-UPDATE entries SET preserved_content = ?, preserved_at = ?, preserve_requested = 0, preserve_error = ''
-WHERE id = ?`, html, Now(), id); err != nil {
+UPDATE entries SET preserved_content = ?, preserved_at = ?, preserve_requested = 0, preserve_error = '',
+       text_length = ?, image = CASE WHEN image != '' AND ? != '' THEN ? ELSE image END
+WHERE id = ?`, html, Now(), utf8.RuneCountInString(htmlx.Flat(html)), localImage, localImage, id); err != nil {
 		return err
 	}
 	return tx.Commit()

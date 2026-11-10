@@ -30,6 +30,19 @@ const busy = async (el, fn) => {
 const feedDialog = () => document.getElementById('feed-dialog');
 const syncSince = (form) => { form.querySelector('.since').hidden = !form.preserve.checked; };
 
+// Reflect the stored display preferences in the settings sheet.
+const syncPrefs = () => {
+  const prefs = readroomPrefs.get();
+  document.querySelectorAll('#prefs-dialog [data-pref]').forEach((group) => {
+    const name = group.dataset.pref;
+    if (name === 'size') {
+      group.querySelector('output').textContent = prefs.size + ' px';
+      return;
+    }
+    group.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.value === String(prefs[name])));
+  });
+};
+
 const actions = {
   async 'toggle-star'(el) {
     const on = !el.classList.contains('on');
@@ -66,7 +79,12 @@ const actions = {
     el.closest('li').remove();
     document.getElementById('entries').insertAdjacentHTML('beforeend', html);
   },
-  'open-dialog'(el) { document.getElementById(el.dataset.dialog).showModal(); },
+  'open-dialog'(el) {
+    const dialog = document.getElementById(el.dataset.dialog);
+    if (dialog.id === 'prefs-dialog') syncPrefs();
+    dialog.showModal();
+  },
+  'reset-prefs'() { readroomPrefs.reset(); syncPrefs(); },
   'close-dialog'(el) { el.closest('dialog').close(); },
 
   'edit-feed'(el) {
@@ -79,6 +97,7 @@ const actions = {
     form.category.value = d.category;
     form.preserve.checked = d.preserve === 'true';
     form.since.value = d.since;
+    form.ai.checked = d.ai === 'true';
     syncSince(form);
     feedDialog().showModal();
   },
@@ -112,6 +131,7 @@ const submits = {
       category: form.category.value,
       preserve: form.preserve.checked,
       preserve_since: form.since.value || null,
+      ai_summary: form.ai.checked,
     });
     location.reload();
   },
@@ -155,6 +175,30 @@ document.addEventListener('change', async (e) => {
       setTimeout(() => location.reload(), 1200);
     }
   } catch (err) { toast(err.message); }
+});
+
+// Clearing the search box (the field's own "x", or deleting the text) brings the
+// full list back straight away instead of waiting for Enter.
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (el.type !== 'search' || el.name !== 'q' || el.value !== '') return;
+  if (new URLSearchParams(location.search).get('q')) el.form.requestSubmit();
+});
+
+// An empty search is no search: keep "q=" out of the address.
+document.addEventListener('submit', (e) => {
+  const q = e.target.elements && e.target.elements.q;
+  if (q && q.type === 'search' && q.value.trim() === '') q.disabled = true;
+});
+
+// Display preferences apply immediately and are stored on this device.
+document.addEventListener('click', (e) => {
+  const button = e.target.closest('#prefs-dialog [data-pref] button');
+  if (!button) return;
+  const name = button.closest('[data-pref]').dataset.pref;
+  if (name === 'size') readroomPrefs.set({ size: readroomPrefs.get().size + Number(button.value) });
+  else readroomPrefs.set({ [name]: button.value });
+  syncPrefs();
 });
 
 // Close a sheet when its backdrop is tapped.

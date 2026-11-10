@@ -115,6 +115,14 @@ func (s *Server) shell(r *http.Request, title, tab, active string) (*shell, erro
 	return sh, nil
 }
 
+// pageCSP makes the browser enforce that the app is self-contained: scripts,
+// styles and fonts may only come from this server, so it works with no internet.
+// Images and media are the one exception, because articles that were not
+// preserved still point at their original sites.
+const pageCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; " +
+	"img-src 'self' data: https: http:; media-src 'self' https: http:; frame-src https:; " +
+	"object-src 'none'; base-uri 'none'; form-action 'self'"
+
 func (s *Server) render(w http.ResponseWriter, page, block string, data any) {
 	var buf bytes.Buffer
 	if err := s.pages[page].ExecuteTemplate(&buf, block, data); err != nil {
@@ -124,6 +132,7 @@ func (s *Server) render(w http.ResponseWriter, page, block string, data any) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", pageCSP)
 	w.Write(buf.Bytes())
 }
 
@@ -412,8 +421,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f2f2f7",
-  "theme_color": "#f2f2f7",
+  "background_color": "#f3f1ec",
+  "theme_color": "#f3f1ec",
   "icons": [
     {"src": "/icon/192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
     {"src": "/icon/512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}

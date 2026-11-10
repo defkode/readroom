@@ -38,11 +38,13 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | | |
 |---|---|
 | `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?}` |
-| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`) |
+| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary` |
 | `POST /feeds/{id}/refresh` | fetch now |
 | `GET /entries` | filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc`, `limit`; page with `before=<next>` |
 | `GET /entries/{id}` | includes `content` and `preserved_content` |
 | `PATCH /entries/{id}` | any of `read`, `starred`, `summary`, `summary_model` |
+| `GET /summaries/pending` | work queue for a summarising script or agent — see below; `limit`, `max_chars`, `feed_id` |
+| `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
 | `POST /entries/{id}/preserve` | keep a local copy of this one article |
 | `POST /entries/mark-read` | optional `{feed_id}` or `{category}` |
 | `GET /entries/{id}/export?format=epub\|md` | |
@@ -59,7 +61,24 @@ curl -H "Authorization: Bearer $READROOM_TOKEN" -X PATCH localhost:8090/api/v1/e
 
 ## Summaries
 
-The server never calls a model. `readroom summarize` is an ordinary API client that fills in missing summaries:
+Every article has an `excerpt`: the feed's own teaser when it publishes a short one, otherwise the opening
+of the text. An AI `summary` replaces it wherever one exists, marked with an AI badge.
+
+The server never calls a model. It keeps a queue instead: `GET /api/v1/summaries/pending` returns articles
+whose feed has **AI summary** switched on, that have no summary yet, and whose text is at least
+`READROOM_SUMMARY_MIN_CHARS` (default 1500) long. Feeds that also keep local copies are queued once the full
+copy is stored. Each item carries the plain text, ready for a prompt:
+
+```json
+{"entries": [{"id": 42, "feed_title": "The Go Blog", "title": "…", "url": "…", "published_at": "…",
+              "text_length": 12084, "text": "…", "truncated": false}],
+ "remaining": 7, "min_chars": 1500}
+```
+
+Write the result back with `PUT /api/v1/entries/42/summary` and `{"summary": "…", "model": "qwen3.6"}`.
+The queue has no locking: run one summariser at a time.
+
+`readroom summarize` is an ordinary client of that queue:
 
 ```sh
 export READROOM_TOKEN=…

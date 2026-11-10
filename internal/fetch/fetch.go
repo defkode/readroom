@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	readability "codeberg.org/readeck/go-readability/v2"
 	"github.com/mmcdole/gofeed"
@@ -172,9 +173,23 @@ func (f *Fetcher) fetchFeed(ctx context.Context, feed *store.Feed) (title, site,
 			GUID: guid, URL: link, Title: strings.TrimSpace(it.Title), Author: author,
 			PublishedAt: published.Format(store.TimeFormat),
 			Content:     htmlx.Sanitize(absolutize(content, link)),
+			Excerpt:     teaser(it.Description),
 		})
 	}
 	return strings.TrimSpace(parsed.Title), parsed.Link, resp.Header.Get("ETag"), resp.Header.Get("Last-Modified"), items, nil
+}
+
+// teaserMax is the longest feed description still treated as a teaser rather
+// than the article itself.
+const teaserMax = 500
+
+// teaser returns the feed's own short description of an item, if it has one.
+func teaser(description string) string {
+	text := htmlx.Flat(htmlx.Sanitize(description))
+	if text == "" || utf8.RuneCountInString(text) > teaserMax {
+		return ""
+	}
+	return text
 }
 
 func resolve(base, ref string) string {

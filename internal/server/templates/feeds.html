@@ -1,3 +1,7 @@
+{{define "actions"}}{{if .Auth}}
+<form method="post" action="/logout"><button class="iconbtn" aria-label="Sign out" title="Sign out">{{icon "logout"}}</button></form>
+{{end}}{{end}}
+
 {{define "content"}}
 <form class="card row" data-action="add-feed">
   <input name="url" type="url" placeholder="https://example.com/feed.xml" required autocomplete="off" aria-label="Feed URL">
@@ -13,13 +17,14 @@
   <li>
     <button class="rowbtn" data-action="edit-feed"
       data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
-      data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}">
+      data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}">
       <span class="body">
         <span class="title">{{.Title}}</span>
         <span class="sub">{{.URL}}</span>
         {{if .LastError}}<span class="sub err">{{.LastError}}</span>{{end}}
       </span>
       <span class="tags">
+        {{if .AISummary}}<span class="tag">{{icon "ai"}}AI</span>{{end}}
         {{if .Preserve}}<span class="tag">keeps copies{{if .PreserveSince}} since {{day .PreserveSince}}{{end}}</span>{{end}}
         <span class="count">{{.Total}}</span>
       </span>
@@ -37,7 +42,6 @@
   <li><a class="rowbtn" href="/api/v1/export/opml" download>{{icon "download"}}<span class="body"><span class="title">Export OPML</span><span class="sub">Feed list only</span></span></a></li>
   <li><a class="rowbtn" href="/api/v1/export/db" download>{{icon "download"}}<span class="body"><span class="title">Download everything</span><span class="sub">One SQLite file with all feeds, articles, images and readlists</span></span></a></li>
 </ul>
-{{if .Auth}}<form method="post" action="/logout" class="signout"><button class="btn quiet">Sign out</button></form>{{end}}
 
 <dialog id="feed-dialog" class="sheet">
   <form data-action="save-feed">
@@ -47,6 +51,7 @@
     <label>Category<input name="category" list="categories" autocomplete="off" placeholder="None"></label>
     <label class="switch"><span>Keep local copies<small>Store each article's full text and images, so it survives if the original disappears</small></span><input type="checkbox" name="preserve"></label>
     <label class="since">Only articles published since<input type="date" name="since"><small>Leave empty to keep every article, including older ones already in the feed</small></label>
+    <label class="switch"><span>AI summary<small>Queue this feed's longer articles for a summary written by your model. Until one arrives, the feed's own teaser is shown</small></span><input type="checkbox" name="ai"></label>
     <div class="buttons">
       <button class="btn" value="save">Save</button>
       <button class="btn quiet" type="button" data-action="refresh-feed">{{icon "refresh"}} Refresh now</button>
