@@ -128,6 +128,10 @@ CREATE INDEX entries_arrival ON entries (created_at DESC, published_at DESC, id 
 -- How much of a new feed's backlog starts out unread; applied once, by its first successful fetch.
 ALTER TABLE feeds ADD COLUMN initial_unread TEXT NOT NULL DEFAULT '';
 `,
+	`
+-- Whether the feed sends only a teaser of each article: NULL until an article's page has been compared.
+ALTER TABLE feeds ADD COLUMN teaser INTEGER;
+`,
 }
 
 func Open(path string) (*Store, error) {

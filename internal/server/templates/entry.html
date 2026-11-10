@@ -24,6 +24,13 @@
     </p>
   </header>
   {{end}}
+  {{if .Teaser}}
+  <p class="teaser">
+    {{icon "archive"}}<span>This feed sends only a teaser of each article.</span>
+    <button data-action="preserve" data-id="{{.Entry.ID}}">Get the full article</button>
+    <button data-action="preserve-feed" data-feed="{{.Entry.FeedID}}" data-id="{{.Entry.ID}}">Always for this feed</button>
+  </p>
+  {{end}}
   {{if .Paragraph}}
   <section class="summary">
     <h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>

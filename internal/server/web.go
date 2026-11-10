@@ -437,6 +437,7 @@ type entryPage struct {
 	Lists     []listMembership
 	Pending   bool // a local copy was requested and isn't ready yet
 	FirstRead bool // this very visit marked it read, so there is no earlier reading to report
+	Teaser    bool // the feed sends only teasers and this article has no fuller copy: offer one
 	Paragraph []string
 }
 
@@ -474,6 +475,13 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		member[lid] = true
 	}
 	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead}
+	for _, g := range sh.Groups {
+		for _, feed := range g.Feeds {
+			if feed.ID == e.FeedID {
+				page.Teaser = feed.TeaserOnly && !feed.Preserve && !e.Preserved && e.URL != ""
+			}
+		}
+	}
 	for _, l := range sh.Readlists {
 		page.Lists = append(page.Lists, listMembership{Readlist: l, Member: member[l.ID]})
 	}

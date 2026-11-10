@@ -118,6 +118,11 @@ feed deletes its entries and any images no other entry uses. Timestamps are UTC 
   local copy: the readable text plus its images, stored in the database. Changing the setting back-fills
   existing articles that now qualify.
 - Any single article can also be preserved on request, whatever the feed's setting.
+- **Teaser-only feeds:** once per feed, after a fetch, the pages of its two newest articles are read
+  and compared with what the feed sent. If each holds at least three times the text and a screenful
+  more, the feed is marked as sending only teasers. Adding such a feed offers to keep local copies;
+  its articles carry the same offer under the title ("Get the full article", "Always for this feed");
+  and Manage feeds says so. Feeds that already keep local copies are not checked.
 - Feeds that already publish full text are cleaner than a scraped page, so the page only replaces the
   feed's content when it has clearly more text (over 1.3×).
 - Limits: page 10 MB, image 8 MB, 60 images per article, 3 attempts before giving up (the error is
@@ -270,6 +275,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |
 | Unwanted articles are hidden, not deleted, and hiding touches nothing else | a deleted article would come back as new on the next fetch; leaving its star and readlists alone makes "Show again" an exact undo |
 | Unread is ordered by arrival, not publication, and a new feed brings only its recent articles as unread | in publication order a new feed's backlog was scattered deep in the list and missed; in arrival order a whole backlog would push everything else down |
+| Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -281,7 +287,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `2260711`. Later commits have only run locally
+- The NAS was updated on 2026-11-10 to the code at commit `27c0c7a`. Later commits have only run locally
   until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing

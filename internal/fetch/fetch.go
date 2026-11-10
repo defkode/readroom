@@ -124,12 +124,49 @@ func (f *Fetcher) refresh(ctx context.Context, feed *store.Feed) error {
 			f.Log.Error("trim backlog", "feed", feed.URL, "err", err)
 		}
 	}
+	if !feed.TeaserChecked && !feed.Preserve {
+		f.checkTeaser(ctx, feed)
+	}
 	if got.movedTo != "" {
 		f.Log.Info("feed moved for good", "from", feed.URL, "to", got.movedTo)
 	}
 	return f.Store.FeedFetched(ctx, feed.ID, store.FetchOutcome{
 		Title: got.title, SiteURL: got.site, ETag: got.etag, LastModified: got.lastMod, MovedTo: got.movedTo,
 	})
+}
+
+// checkTeaser finds out, once per feed, whether it sends only a teaser of each
+// article: it reads the pages of its two newest articles and compares how much
+// text they hold with what the feed sent. The answer lets the reader offer to
+// keep local copies instead of leaving the owner to notice.
+func (f *Fetcher) checkTeaser(ctx context.Context, feed *store.Feed) {
+	entries, err := f.Store.Entries(ctx, store.EntryFilter{FeedID: feed.ID, Limit: 2})
+	if err != nil || len(entries) == 0 {
+		return // nothing to judge by yet; try again after the next fetch
+	}
+	compared, teasers := 0, 0
+	for _, e := range entries {
+		if e.URL == "" || e.Preserved {
+			continue
+		}
+		page, err := f.readable(ctx, e.URL)
+		if err != nil {
+			continue
+		}
+		compared++
+		onPage, inFeed := utf8.RuneCountInString(htmlx.Flat(page)), max(e.TextLength, 0)
+		// Clearly more on the page: three times the text and at least a screenful more.
+		if onPage >= 3*max(inFeed, 1) && onPage-inFeed >= 1000 {
+			teasers++
+		}
+	}
+	// If no page could be read, settle on "no" rather than ask the site again every half hour.
+	teaser := compared > 0 && teasers == compared
+	if err := f.Store.SetTeaser(ctx, feed.ID, teaser); err != nil {
+		f.Log.Error("record teaser check", "feed", feed.URL, "err", err)
+	} else if teaser {
+		f.Log.Info("feed sends only teasers", "feed", feed.URL)
+	}
 }
 
 // StatusError is an answer other than "here is the feed".

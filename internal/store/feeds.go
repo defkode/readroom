@@ -31,6 +31,8 @@ type Feed struct {
 	Broken        bool    `json:"broken"`          // has failed often enough to need attention
 	Stale         bool    `json:"stale"`           // answers, but has published nothing for a long time
 	InitialUnread string  `json:"-"`               // backlog policy for the first fetch, see TrimBacklog
+	TeaserOnly    bool    `json:"teaser_only"`     // its articles are far longer on their pages than in the feed
+	TeaserChecked bool    `json:"-"`               // whether that has been looked into yet
 	CreatedAt     string  `json:"created_at"`
 	Unread        int     `json:"unread"`
 	Total         int     `json:"total"`
@@ -39,7 +41,8 @@ type Feed struct {
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
        f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
-       f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
+       f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, f.teaser IS NOT NULL, coalesce(f.teaser, 0),
+       (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL)
 FROM feeds f`
@@ -48,7 +51,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
 		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
-		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.LatestEntryAt,
+		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.TeaserChecked, &f.TeaserOnly, &f.LatestEntryAt,
 		&f.Unread, &f.Total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -210,6 +213,12 @@ func (s *Store) DeleteFeed(ctx context.Context, id int64) error {
 		return err
 	}
 	return s.pruneAssets(ctx)
+}
+
+// SetTeaser records whether a feed sends only teasers of its articles.
+func (s *Store) SetTeaser(ctx context.Context, id int64, teaser bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE feeds SET teaser = ? WHERE id = ?`, b2i(teaser), id)
+	return err
 }
 
 // FetchOutcome is what one fetch of a feed found.

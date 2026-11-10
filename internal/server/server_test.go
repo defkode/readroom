@@ -517,6 +517,10 @@ func TestAddingFeedsIsValidated(t *testing.T) {
 	if feed.Broken || feed.FailCount != 0 || feed.LastOKAt == nil {
 		t.Errorf("a new feed should be healthy: %+v", feed)
 	}
+	// Its articles are a line in the feed and a page of text on the site.
+	if !feed.TeaserOnly {
+		t.Error("a feed of one-line excerpts should be recognised as teaser-only")
+	}
 	// An address that has moved for good is saved as the new one, which is already here.
 	if resp, moved := post(site.URL + "/moved.xml"); resp.StatusCode != http.StatusOK || moved.ID != feed.ID {
 		t.Errorf("adding a moved address: status %d, feed %d, want the existing feed %d", resp.StatusCode, moved.ID, feed.ID)

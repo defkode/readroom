@@ -39,7 +39,7 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 
 | | |
 |---|---|
-| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, keep_days?, unread?}` (`unread`: how much of the backlog starts unread — `recent` by default, `latest`, `all` or `none`); `url` may be a feed or a page that leads to one, and `422` explains an address that is neither. Feeds report their health: `fail_count`, `failing_since`, `last_ok_at`, `broken`, `stale` |
+| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, keep_days?, unread?}` (`unread`: how much of the backlog starts unread — `recent` by default, `latest`, `all` or `none`); `url` may be a feed or a page that leads to one, and `422` explains an address that is neither. Feeds report their health (`fail_count`, `failing_since`, `last_ok_at`, `broken`, `stale`) and `teaser_only`, set when their articles are far longer on the site than in the feed |
 | `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary`, `keep_days` (default 365; `0` keeps articles forever) |
 | `POST /feeds/{id}/refresh` | fetch now |
 | `GET /entries` | hidden articles are left out unless `hidden=true` asks for them instead; filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc` or `order=arrival` (newest arrivals first), `limit`; page with `before=<next>` |

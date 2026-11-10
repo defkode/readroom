@@ -167,6 +167,11 @@ const actions = {
     dialog.querySelector('[data-action="create-list"]').dataset.id = id;
     dialog.showModal();
   },
+  // Keep local copies for the whole feed from now on, starting with this article.
+  async 'preserve-feed'(el) {
+    await api('PATCH', `/feeds/${el.dataset.feed}`, { preserve: true });
+    if (await keepCopy(el.dataset.id)) location.reload();
+  },
   // Not awaited: the copy takes a while and the shared menu must stay usable for other rows.
   'row-preserve'(el) {
     const row = rowOf(el);
@@ -310,6 +315,11 @@ const actions = {
 const submits = {
   async 'add-feed'(form) {
     const feed = await api('POST', '/feeds', { url: form.url.value, category: form.category.value, unread: form.unread.value });
+    // A feed that sends only the opening of each article: offer to fetch the rest.
+    if (feed.teaser_only && !feed.preserve &&
+        confirm(`"${feed.title}" sends only a teaser of each article.\n\nKeep local copies, so the full text and images are here?`)) {
+      await api('PATCH', `/feeds/${feed.id}`, { preserve: true });
+    }
     location.reload();
   },
   async 'save-feed'(form) {

@@ -353,6 +353,12 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article .status button + button { margin-left: 0; }
 .article .status button:active { opacity: .7; }
 .article .status .err { flex-basis: 100%; }
+/* An offer to fetch the full text when the feed sent only its opening. */
+.article .teaser { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-soft); font-size: .86rem; }
+.article .teaser .icon { width: 16px; height: 16px; color: var(--accent); }
+.article .teaser span { flex: 1 1 calc(100% - 30px); } /* the offer on one line, its two answers on the next */
+.article .teaser button { padding: 5px 12px; border: 0; border-radius: 99px; background: var(--surface); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.article .teaser button[disabled] { opacity: .5; }
 .summary { margin: 22px 0; padding: 14px 16px; border-radius: var(--radius); background: var(--accent-soft); }
 .summary h2 { margin-bottom: 6px; font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .summary h2 small { text-transform: none; letter-spacing: 0; }
@@ -427,10 +433,14 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
 @media (min-width: 900px) {
   .tabbar { display: none; }
   .sidebar {
-    display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; width: var(--sidebar); padding: 14px 12px 14px; overflow-y: auto;
+    display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; width: var(--sidebar); padding: 0 12px; overflow-y: auto;
     background: var(--bg); border-right: .5px solid var(--sep); overscroll-behavior: contain;
   }
-  .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-size: 1.15rem; font-weight: 750; letter-spacing: -.02em; }
+  /* The name with its buttons, and Sign out, stay in view while a long list of feeds scrolls between them. */
+  .sidebar .brand {
+    position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; margin: 0 -12px; padding: 20px 20px 16px;
+    background: var(--bg); font-size: 1.15rem; font-weight: 750; letter-spacing: -.02em;
+  }
   .sidebar .brand img { border-radius: 7px; }
   .sidebar .brand .iconbtn { width: 36px; height: 36px; margin: -4px -4px -4px auto; color: var(--muted); }
   .sidebar .brand .iconbtn + .iconbtn { margin-left: -6px; }
@@ -438,7 +448,8 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
   .sidebar .brand .iconbtn .icon { width: 18px; height: 18px; }
   .sidebar .nav .settings, .sidebar .nav .foot { display: none; } /* in the Settings menu instead */
   /* Signing out is not a setting: it sits alone at the foot of the sidebar. */
-  .sidebar .signout { margin-top: auto; padding-top: 16px; }
+  .sidebar .signout { position: sticky; bottom: 0; margin: auto -12px 0; padding: 12px 12px 14px; background: var(--bg); }
+  .sidebar .nav { padding-bottom: 14px; }
   .sidebar .signout button {
     all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 0 10px;
     border-radius: 9px; font-size: .94rem; color: var(--muted); cursor: pointer;

@@ -48,6 +48,7 @@
         <span class="sub">{{.URL}}</span>
         {{if .Broken}}<span class="sub err">Failing since {{shortDay .FailingSince}} · {{brief .LastError}}</span>
         {{else if .Stale}}<span class="sub">No new articles since {{shortDay .LatestEntryAt}}</span>{{end}}
+        {{if and .TeaserOnly (not .Preserve)}}<span class="sub">Sends only teasers — keep local copies to read the full articles here</span>{{end}}
       </span>
       <span class="tags">
         {{if .AISummary}}<span class="tag">{{icon "ai"}}AI</span>{{end}}
