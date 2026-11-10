@@ -2,8 +2,10 @@
 package server
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -102,16 +104,32 @@ func (s *Server) Handler() http.Handler {
 	web.HandleFunc("POST /logout", s.logout)
 	mux.Handle("/", s.auth(web, true))
 
-	return s.logRequests(mux)
+	return s.logRequests(compress(mux))
 }
+
+// assetVersion changes whenever any embedded static file does. Pages link the
+// stylesheet and scripts with it in the address (see the "static" template
+// function), so a browser keeps them for good and still picks up a new release
+// at once. Without it every page view fetched them again, which is felt on the NAS.
+var assetVersion = func() string {
+	h := sha256.New()
+	fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			data, _ := staticFS.ReadFile(path)
+			h.Write([]byte(path))
+			h.Write(data)
+		}
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}()
 
 func cacheStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "fonts/") {
+		if strings.HasPrefix(r.URL.Path, "fonts/") || r.URL.Query().Get("v") == assetVersion {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
-			// Small files on a local network: always revalidate, so a new
-			// version of the app never runs with a stale stylesheet or script.
+			// Asked for without the current version: never let it go stale.
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		h.ServeHTTP(w, r)

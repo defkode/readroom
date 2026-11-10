@@ -13,9 +13,10 @@
 <meta name="referrer" content="no-referrer">
 <link rel="apple-touch-icon" href="/icon/180.png">
 <link rel="icon" type="image/png" href="/icon/192.png">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/prefs.js"></script>
-<script src="/static/app.js" defer></script>
+<link rel="stylesheet" href="{{static "app.css"}}">
+<script src="{{static "prefs.js"}}"></script>
+<script src="{{static "transitions.js"}}"></script>
+<script src="{{static "app.js"}}" defer></script>
 </head>
 <body class="{{if eq .Tab "login"}}bare{{end}}{{if .Reader}} reader{{end}}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -74,9 +75,9 @@
 {{if and (ne .Tab "login") (not .Reader)}}
 <nav class="tabbar" aria-label="Sections">
   <a href="/" class="{{if eq .Tab "unread"}}on{{end}}">{{icon "unread"}}<span>Unread</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a>
-  <a href="/?view=starred" class="{{if eq .Tab "starred"}}on{{end}}">{{icon "star"}}<span>Starred</span></a>
   <a href="/browse" class="{{if eq .Tab "browse"}}on{{end}}">{{icon "rss"}}<span>Feeds</span></a>
   <a href="/readlists" class="{{if eq .Tab "lists"}}on{{end}}">{{icon "lists"}}<span>Lists</span></a>
+  <a href="/?view=starred" class="{{if eq .Tab "starred"}}on{{end}}">{{icon "star"}}<span>Starred</span></a>
   <a href="/feeds" class="{{if eq .Tab "manage"}}on{{end}}">{{icon "manage"}}<span>Manage</span></a>
 </nav>
 {{end}}

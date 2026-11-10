@@ -31,6 +31,7 @@ func (s *Server) loadTemplates() {
 			return *v
 		},
 		"readWhen": readWhen,
+		"static":   func(name string) string { return "/static/" + name + "?v=" + assetVersion },
 		"html":     func(v string) template.HTML { return template.HTML(v) }, // content is sanitised on ingest
 		"icon": func(name string) template.HTML {
 			return template.HTML(`<svg class="icon" aria-hidden="true"><use href="#i-` + name + `"/></svg>`)

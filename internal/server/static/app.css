@@ -91,7 +91,23 @@
   }
 }
 
+/* Moving between pages: the browser cross-fades, quickly; the content slides a
+   little in the direction of travel (set by transitions.js) while the sidebar
+   and tab bar, being the same on both pages, stay put. */
 @view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .16s; }
+::view-transition-group(*) { animation-duration: .2s; }
+main { view-transition-name: content; }
+.sidebar { view-transition-name: sidebar; }
+.tabbar { view-transition-name: tabbar; }
+@keyframes page-out-left { to { opacity: 0; transform: translateX(-28px); } }
+@keyframes page-in-right { from { opacity: 0; transform: translateX(28px); } }
+@keyframes page-out-right { to { opacity: 0; transform: translateX(28px); } }
+@keyframes page-in-left { from { opacity: 0; transform: translateX(-28px); } }
+html:active-view-transition-type(forward)::view-transition-old(content) { animation: .14s ease-in both page-out-left; }
+html:active-view-transition-type(forward)::view-transition-new(content) { animation: .22s cubic-bezier(.2, .7, .2, 1) both page-in-right; }
+html:active-view-transition-type(back)::view-transition-old(content) { animation: .14s ease-in both page-out-right; }
+html:active-view-transition-type(back)::view-transition-new(content) { animation: .22s cubic-bezier(.2, .7, .2, 1) both page-in-left; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }

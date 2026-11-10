@@ -151,6 +151,9 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   results, and can be undone from the message that follows for a few seconds.
 - An article ends with links to the previous and next article of the list it was opened from (the
   list as it was shown, further pages included), and going back returns to that list.
+- Page changes are animated by the browser (cross-document view transitions): a quick cross-fade, with
+  the content sliding forward into an article or the next one and back to the list or the previous one.
+  Browsers without them, and reduced-motion settings, simply switch pages.
 - Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `/` search) and in an
   article (`j`/`k` next and previous, `u` back, `m` unread, `s` star, `v` original); `?` lists them.
 - Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
@@ -232,6 +235,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
 | Light and dark themes are neutral greys with a blue accent; only sepia is warm | the owner disliked the brown, paper-like palette in both modes and prefers macOS-style greys |
+| Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on the NAS every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -243,7 +247,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `9bfc1f7`. Later commits have only run locally
+- The NAS was updated on 2026-11-10 to the code at commit `b5f3651`. Later commits have only run locally
   until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing

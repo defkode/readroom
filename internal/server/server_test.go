@@ -359,6 +359,10 @@ func TestFeedLifecycle(t *testing.T) {
 		if resp.StatusCode != 200 || len(page) == 0 || bytes.Contains(page, []byte("template error")) {
 			t.Errorf("GET %s: status %d, %d bytes", path, resp.StatusCode, len(page))
 		}
+		// Pages link the stylesheet and scripts by version, so browsers can keep them.
+		if path == "/browse" && !bytes.Contains(page, []byte("/static/app.css?v="+assetVersion)) {
+			t.Errorf("GET %s: stylesheet is not linked by version", path)
+		}
 		// Pages must be self-contained: nothing loaded from another host, enforced by CSP.
 		if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 			if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "font-src 'self'") {
@@ -367,6 +371,23 @@ func TestFeedLifecycle(t *testing.T) {
 			if m := externalAsset.Find(page); m != nil {
 				t.Errorf("GET %s: loads an external asset: %s", path, m)
 			}
+		}
+	}
+
+	// Versioned static files are cached for good and, like pages, sent compressed.
+	for query, wantCache := range map[string]string{"?v=" + assetVersion: "immutable", "": "no-cache", "?v=stale": "no-cache"} {
+		req, _ := http.NewRequest("GET", a.url+"/static/app.css"+query, nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := http.DefaultTransport.RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, wantCache) {
+			t.Errorf("app.css%s: Cache-Control %q, want %s", query, cc, wantCache)
+		}
+		if resp.Header.Get("Content-Encoding") != "gzip" {
+			t.Errorf("app.css%s: not compressed", query)
 		}
 	}
 
