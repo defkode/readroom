@@ -48,7 +48,8 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `GET /summaries/pending` | work queue for a summarising script or agent — see below; `limit`, `max_chars`, `feed_id` |
 | `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
 | `POST /entries/{id}/preserve` | keep a local copy of this one article |
-| `POST /entries/mark-read` | optional `{feed_id}` or `{category}` |
+| `POST /entries/mark-read` | optional `{feed_id}` or `{category}`; `{through: id}` limits it to that article and older ones; returns `{marked, ids}` |
+| `POST /entries/mark-unread` | `{ids}` — undoes a mark-read |
 | `GET /entries/{id}/export?format=epub\|md` | |
 | `GET/POST /readlists` · `GET/PATCH/DELETE /readlists/{id}` | |
 | `PUT/DELETE /readlists/{id}/entries/{entry}` | add / remove |

@@ -295,15 +295,40 @@ func (s *Server) apiUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	s.apiEntry(w, r)
 }
 
-func (s *Server) apiMarkAllRead(w http.ResponseWriter, r *http.Request) {
+// apiMarkRead marks unread entries as read: all of them, or those of a feed or
+// category, optionally only one entry and everything older ("through"). It
+// returns the ids it changed so the change can be undone with mark-unread.
+func (s *Server) apiMarkRead(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FeedID   int64   `json:"feed_id"`
 		Category *string `json:"category"`
+		Through  int64   `json:"through"`
 	}
 	if r.ContentLength != 0 && !readJSON(w, r, &in) {
 		return
 	}
-	n, err := s.Store.MarkAllRead(r.Context(), in.FeedID, in.Category)
+	if in.Through != 0 {
+		if _, err := s.Store.Entry(r.Context(), in.Through); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	ids, err := s.Store.MarkRead(r.Context(), store.ReadScope{FeedID: in.FeedID, Category: in.Category, Through: in.Through})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"marked": len(ids), "ids": ids})
+}
+
+func (s *Server) apiMarkUnread(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	n, err := s.Store.MarkUnread(r.Context(), in.IDs)
 	if err != nil {
 		s.fail(w, err)
 		return

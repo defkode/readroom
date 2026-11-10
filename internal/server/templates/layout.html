@@ -28,6 +28,7 @@
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-checks" viewBox="0 0 24 24"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></symbol>
@@ -159,4 +160,26 @@
     </ul>
   </form>
 </nav>
+{{end}}
+
+{{/* The feed settings sheet, shared by Manage feeds and a feed's own list; "." is the category names. */}}
+{{define "feed-dialog"}}
+<datalist id="categories">{{range .}}<option value="{{.}}">{{end}}</datalist>
+<dialog id="feed-dialog" class="sheet">
+  <form data-action="save-feed">
+    <h2>Feed settings</h2>
+    <label>Name<input name="title" autocomplete="off"></label>
+    <label>Feed URL<input name="url" type="url" required autocomplete="off"></label>
+    <label>Category<input name="category" list="categories" autocomplete="off" placeholder="None"></label>
+    <label class="switch"><span>Keep local copies<small>Store each article's full text and images, so it survives if the original disappears</small></span><input type="checkbox" name="preserve"></label>
+    <label class="since">Only articles published since<input type="date" name="since"><small>Leave empty to keep every article, including older ones already in the feed</small></label>
+    <label class="switch"><span>AI summary<small>Queue this feed's longer articles for a summary written by your model. Until one arrives, the feed's own teaser is shown</small></span><input type="checkbox" name="ai"></label>
+    <div class="buttons">
+      <button class="btn" value="save">Save</button>
+      <button class="btn quiet" type="button" data-action="refresh-feed">{{icon "refresh"}} Refresh now</button>
+      <button class="btn quiet danger" type="button" data-action="delete-feed">Delete feed</button>
+      <button class="btn quiet" type="button" data-action="close-dialog">Cancel</button>
+    </div>
+  </form>
+</dialog>
 {{end}}

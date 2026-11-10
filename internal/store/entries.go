@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -261,19 +262,67 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
 	return affected(s.db.ExecContext(ctx, `UPDATE entries SET `+strings.Join(set, ", ")+` WHERE id = ?`, args...))
 }
 
-// MarkAllRead marks every entry matching the feed/category scope as read.
-func (s *Store) MarkAllRead(ctx context.Context, feedID int64, category *string) (int64, error) {
-	q := `UPDATE entries SET read = 1 WHERE read = 0`
+// ReadScope selects the unread entries a bulk "mark as read" covers.
+type ReadScope struct {
+	FeedID   int64
+	Category *string
+	Through  int64 // when set, only this entry and those older than it
+}
+
+func (sc ReadScope) where() (string, []any) {
+	q := ` WHERE read = 0`
 	var args []any
-	if feedID != 0 {
+	if sc.FeedID != 0 {
 		q += ` AND feed_id = ?`
-		args = append(args, feedID)
+		args = append(args, sc.FeedID)
 	}
-	if category != nil {
+	if sc.Category != nil {
 		q += ` AND feed_id IN (SELECT id FROM feeds WHERE category = ?)`
-		args = append(args, *category)
+		args = append(args, *sc.Category)
 	}
-	res, err := s.db.ExecContext(ctx, q, args...)
+	if sc.Through != 0 {
+		// The same order lists use: newest first by publication time, then id.
+		q += ` AND (published_at, id) <= (SELECT published_at, id FROM entries WHERE id = ?)`
+		args = append(args, sc.Through)
+	}
+	return q, args
+}
+
+// CountUnread reports how many entries MarkRead would mark for this scope.
+func (s *Store) CountUnread(ctx context.Context, sc ReadScope) (n int64, err error) {
+	where, args := sc.where()
+	err = s.db.QueryRowContext(ctx, `SELECT count(*) FROM entries`+where, args...).Scan(&n)
+	return n, err
+}
+
+// MarkRead marks the unread entries in scope as read and returns their ids, so
+// the caller can offer to undo exactly that change with MarkUnread.
+func (s *Store) MarkRead(ctx context.Context, sc ReadScope) ([]int64, error) {
+	where, args := sc.where()
+	rows, err := s.db.QueryContext(ctx, `UPDATE entries SET read = 1`+where+` RETURNING id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// MarkUnread marks the given entries as unread again.
+func (s *Store) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
+	list, err := json.Marshal(ids)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE entries SET read = 0 WHERE read = 1 AND id IN (SELECT value FROM json_each(?))`, string(list))
 	if err != nil {
 		return 0, err
 	}

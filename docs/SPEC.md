@@ -128,9 +128,13 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 ### Reading, organising, searching
 
 - Views: Unread, All, Starred; by feed, by category, by readlist. Opening an article marks it read;
-  it can be marked unread again. "Mark all as read" applies to the current feed or category.
-- Readlists: create, rename, delete; add or remove articles (from the article, or from the ⋮ menu on each
-  row of the readlist itself).
+  it can be marked unread again.
+- Every row has a ⋮ menu: mark as read or unread, star, "Mark this and older as read", and in a readlist
+  "Remove from readlist". The list's own ⋮ menu has "Mark all N as read" and, for a
+  single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
+  current feed or category (or everything), are not offered in a readlist, in Starred or in search
+  results, and can be undone from the message that follows for a few seconds.
+- Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
 - Search matches the title, the AI summary and the excerpt (substring, not full text).
 
 ### Export
@@ -204,6 +208,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | The scheduled job needs only `READROOM_TOKEN` | one secret in one file; everything else is fixed in the unit |
 | One summariser at a time, no leasing | simplest thing that works for one person; add leasing if several workers are ever needed |
 | Excerpt from the feed's teaser, else the first real paragraph, else the image caption | every article shows something useful without waiting for a model |
+| Bulk "mark as read" is a labelled menu item with Undo, not a bare icon with a confirmation | a lone check mark did not say it meant everything; confirmations get clicked through, undo actually recovers a slip |
+| "Mark this and older as read" instead of checkboxes for partial marking | one tap closes the rest of a list once nothing below is of interest; multi-select is fiddly on a phone |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |

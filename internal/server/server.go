@@ -67,7 +67,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/v1/categories", s.apiCategories)
 
 	api.HandleFunc("GET /api/v1/entries", s.apiEntries)
-	api.HandleFunc("POST /api/v1/entries/mark-read", s.apiMarkAllRead)
+	api.HandleFunc("POST /api/v1/entries/mark-read", s.apiMarkRead)
+	api.HandleFunc("POST /api/v1/entries/mark-unread", s.apiMarkUnread)
 	api.HandleFunc("GET /api/v1/entries/{id}", s.apiEntry)
 	api.HandleFunc("PATCH /api/v1/entries/{id}", s.apiUpdateEntry)
 	api.HandleFunc("POST /api/v1/entries/{id}/preserve", s.apiPreserveEntry)

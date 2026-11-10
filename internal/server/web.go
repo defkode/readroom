@@ -148,17 +148,20 @@ func (s *Server) webFail(w http.ResponseWriter, err error) {
 // --- pages ------------------------------------------------------------------
 
 type entriesPage struct {
-	Entries  []*store.Entry
-	More     string // URL of the next page of items, empty at the end
-	View     string
-	Tabs     []viewTab         // unread / all / starred switcher, keeping the current scope
-	Hidden   map[string]string // scope fields the search form must carry along
-	Query    string
-	FeedID   int64
-	Category *string
-	ListID   int64 // set in a readlist, where each row offers removal
-	CanMark  bool
-	Empty    string
+	Entries    []*store.Entry
+	More       string // URL of the next page of items, empty at the end
+	View       string
+	Tabs       []viewTab         // unread / all / starred switcher, keeping the current scope
+	Hidden     map[string]string // scope fields the search form must carry along
+	Query      string
+	FeedID     int64
+	Category   *string
+	ListID     int64       // set in a readlist, where each row offers removal
+	CanMark    bool        // bulk "mark as read" applies here: a feed, a category or everything
+	Unread     int64       // how many articles "mark all as read" would mark
+	Feed       *store.Feed // set when the list is one feed, whose settings can be opened here
+	Categories []string    // for the feed settings sheet
+	Empty      string
 }
 
 func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +172,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	title, tab, active := "Unread", "unread", "view:unread"
 	scope := url.Values{}
 	ctx := r.Context()
+	var feed *store.Feed
 
 	switch {
 	case f.ReadlistID != 0:
@@ -183,8 +187,8 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 			view = "all"
 		}
 	case f.FeedID != 0:
-		feed, err := s.Store.Feed(ctx, f.FeedID)
-		if err != nil {
+		var err error
+		if feed, err = s.Store.Feed(ctx, f.FeedID); err != nil {
 			s.webFail(w, err)
 			return
 		}
@@ -230,7 +234,21 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
-		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, CanMark: f.ReadlistID == 0 && view != "starred", Empty: empty}
+		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed}
+	if feed != nil && q.Get("partial") == "" {
+		if page.Categories, err = s.Store.Categories(ctx); err != nil {
+			s.webFail(w, err)
+			return
+		}
+	}
+	// Bulk marking covers a whole feed, category or everything, so it is not offered
+	// where the list shows a narrower selection (a readlist, starred, a search).
+	if page.CanMark = f.ReadlistID == 0 && view != "starred" && f.Query == ""; page.CanMark && q.Get("partial") == "" {
+		if page.Unread, err = s.Store.CountUnread(ctx, store.ReadScope{FeedID: f.FeedID, Category: f.Category}); err != nil {
+			s.webFail(w, err)
+			return
+		}
+	}
 	for k := range scope {
 		page.Hidden[k] = scope.Get(k)
 	}

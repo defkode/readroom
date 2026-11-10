@@ -1,5 +1,5 @@
-{{define "actions"}}{{with .Page}}{{if .CanMark}}
-<button class="iconbtn" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}} aria-label="Mark all as read" title="Mark all as read">{{icon "check"}}</button>
+{{define "actions"}}{{with .Page}}{{if or .CanMark .Feed}}
+<button class="iconbtn" data-action="open-menu" data-menu="page-menu" aria-label="List actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
@@ -17,16 +17,26 @@
 {{else}}
 <p class="empty">{{.Empty}}</p>
 {{end}}
-{{if .ListID}}
 <div id="row-menu" class="menu" popover role="menu">
-  <button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}Remove from readlist</button>
+  <button role="menuitem" data-action="row-read">{{icon "check"}}<span>Mark as read</span></button>
+  {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}>{{icon "checks"}}<span>Mark this and older as read</span></button>{{end}}
+  <button role="menuitem" data-action="row-star">{{icon "star"}}<span>Star</span></button>
+  {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
+</div>
+{{if or .CanMark .Feed}}
+<div id="page-menu" class="menu" popover role="menu">
+  {{if .CanMark}}<button role="menuitem" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if not .Unread}} disabled{{end}}>{{icon "checks"}}<span>{{if .Unread}}Mark all {{.Unread}} as read{{else}}Nothing unread here{{end}}</span></button>{{end}}
+  {{with .Feed}}<button role="menuitem" data-action="edit-feed"
+    data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
+    data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}">{{icon "manage"}}<span>Feed settings</span></button>{{end}}
 </div>
 {{end}}
+{{if .Feed}}{{template "feed-dialog" .Categories}}{{end}}
 {{end}}{{end}}
 
 {{define "items"}}
 {{range .Entries}}
-<li class="entry{{if .Read}} read{{end}}{{if $.ListID}} hasmenu{{end}}" data-id="{{.ID}}">
+<li class="entry{{if .Read}} read{{end}}{{if .Starred}} starred{{end}}{{if .Preserved}} kept{{end}}" data-id="{{.ID}}">
   <a href="/entries/{{.ID}}">
     <span class="dot" aria-hidden="true"></span>
     {{if .Image}}<img class="thumb" src="{{.Image}}" alt="" loading="lazy" decoding="async">{{end}}
@@ -35,10 +45,10 @@
       <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
       {{if .Summary}}<span class="snippet"><span class="ai" title="Summary written by AI{{if .SummaryModel}} ({{.SummaryModel}}){{end}}">{{icon "ai"}}AI</span>{{.Summary}}</span>
       {{else if .Excerpt}}<span class="snippet">{{.Excerpt}}</span>{{end}}
-      {{if or .Starred .Preserved}}<span class="flags">{{if .Starred}}<span class="starred">{{icon "star"}}</span>{{end}}{{if .Preserved}}{{icon "archive"}}{{end}}</span>{{end}}
+      <span class="flags"><span class="starred">{{icon "star"}}</span>{{if .Preserved}}{{icon "archive"}}{{end}}</span>
     </span>
   </a>
-  {{if $.ListID}}<button class="iconbtn kebab" data-action="row-menu" data-id="{{.ID}}" aria-label="Article actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>{{end}}
+  <button class="iconbtn kebab" data-action="open-menu" data-menu="row-menu" data-id="{{.ID}}" aria-label="Article actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>
 </li>
 {{end}}
 {{if .More}}<li class="more"><button class="btn quiet" data-action="load-more" data-url="{{.More}}">Load more</button></li>{{end}}

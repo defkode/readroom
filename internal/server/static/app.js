@@ -13,13 +13,20 @@ const api = async (method, path, body) => {
   return data;
 };
 
+// A toast may carry one action, such as undoing what it reports; it then stays longer.
 let toastTimer;
-const toast = (msg) => {
+const toast = (msg, action) => {
   const el = document.getElementById('toast');
   el.textContent = msg;
+  if (action) {
+    const button = document.createElement('button');
+    button.textContent = action.label;
+    button.onclick = () => { el.classList.remove('show'); action.run().catch((err) => toast(err.message)); };
+    el.append(button);
+  }
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 8000 : 2600);
 };
 
 const busy = async (el, fn) => {
@@ -43,6 +50,42 @@ const syncPrefs = () => {
   });
 };
 
+const rowOf = (el) => document.querySelector(`#entries .entry[data-id="${el.dataset.id}"]`);
+const closeMenu = (el) => el.closest('[popover]').hidePopover();
+
+// Unread counts live in the navigation and the list menu; take them from a fresh copy of this page.
+const refreshCounts = async () => {
+  const res = await fetch(location.href);
+  if (!res.ok) return;
+  const fresh = new DOMParser().parseFromString(await res.text(), 'text/html');
+  for (const part of ['.sidebar .nav', '.tabbar', '#page-menu']) {
+    const from = fresh.querySelector(part), to = document.querySelector(part);
+    if (from && to) to.replaceWith(from);
+  }
+};
+
+// Marking many articles reloads the list; the offer to undo is carried across the reload.
+const undoKey = 'readroom-undo';
+const markRead = async (el, body) => {
+  closeMenu(el);
+  if (+el.dataset.feed) body.feed_id = +el.dataset.feed;
+  if ('category' in el.dataset) body.category = el.dataset.category;
+  const { marked, ids } = await api('POST', '/entries/mark-read', body);
+  if (!marked) return toast('Nothing unread here');
+  try { sessionStorage.setItem(undoKey, JSON.stringify({ ids, at: Date.now() })); } catch { /* no undo then */ }
+  location.reload();
+};
+try {
+  const undo = JSON.parse(sessionStorage.getItem(undoKey));
+  sessionStorage.removeItem(undoKey);
+  if (undo && Date.now() - undo.at < 5000) {
+    toast(`Marked ${undo.ids.length} as read`, { label: 'Undo', run: async () => {
+      await api('POST', '/entries/mark-unread', { ids: undo.ids });
+      location.reload();
+    } });
+  }
+} catch { /* storage unavailable */ }
+
 const actions = {
   async 'toggle-star'(el) {
     const on = !el.classList.contains('on');
@@ -65,13 +108,22 @@ const actions = {
       if (e.preserve_error) return toast('Could not save: ' + e.preserve_error);
     }
   },
-  async 'mark-all-read'(el) {
-    const body = {};
-    if (+el.dataset.feed) body.feed_id = +el.dataset.feed;
-    if ('category' in el.dataset) body.category = el.dataset.category;
-    const { marked } = await api('POST', '/entries/mark-read', body);
-    if (!marked) return toast('Nothing unread here');
-    location.reload();
+  'mark-all-read'(el) { return markRead(el, {}); },
+  'read-through'(el) { return markRead(el, { through: +el.dataset.id }); },
+  async 'row-read'(el) {
+    const row = rowOf(el);
+    const read = !row.classList.contains('read');
+    closeMenu(el);
+    await api('PATCH', `/entries/${el.dataset.id}`, { read });
+    row.classList.toggle('read', read);
+    refreshCounts();
+  },
+  async 'row-star'(el) {
+    const row = rowOf(el);
+    const starred = !row.classList.contains('starred');
+    closeMenu(el);
+    await api('PATCH', `/entries/${el.dataset.id}`, { starred });
+    row.classList.toggle('starred', starred);
   },
   async 'load-more'(el) {
     const res = await fetch(el.dataset.url);
@@ -88,6 +140,8 @@ const actions = {
   'close-dialog'(el) { el.closest('dialog').close(); },
 
   'edit-feed'(el) {
+    const menu = el.closest('[popover]');
+    if (menu) menu.hidePopover();
     const form = feedDialog().querySelector('form');
     const d = el.dataset;
     form.dataset.id = d.id;
@@ -109,22 +163,30 @@ const actions = {
     const form = el.closest('form');
     if (!confirm(`Delete "${form.title.value || form.title.placeholder}" and all its articles?`)) return;
     await api('DELETE', `/feeds/${form.dataset.id}`);
-    location.reload();
+    // Deleted from the feed's own list, there is nothing left here to show.
+    new URLSearchParams(location.search).has('feed_id') ? (location.href = '/') : location.reload();
   },
-  // The row menu is one shared popover, placed under the kebab that opened it.
-  'row-menu'(el) {
-    const menu = document.getElementById('row-menu');
-    menu.querySelectorAll('button').forEach((b) => { b.dataset.id = el.dataset.id; });
+  // Menus are shared popovers, placed under the button that opened them. A row's
+  // button also hands the menu its article and that article's current state.
+  'open-menu'(el) {
+    const menu = document.getElementById(el.dataset.menu);
+    if (el.dataset.id) {
+      const row = el.closest('li');
+      const label = (action, text) => { menu.querySelector(`[data-action="${action}"] span`).textContent = text; };
+      menu.querySelectorAll('button').forEach((b) => { b.dataset.id = el.dataset.id; });
+      label('row-read', row.classList.contains('read') ? 'Mark as unread' : 'Mark as read');
+      label('row-star', row.classList.contains('starred') ? 'Remove star' : 'Star');
+    }
     menu.showPopover();
     const at = el.getBoundingClientRect();
     const below = at.bottom + 4 + menu.offsetHeight <= innerHeight - 8;
-    menu.style.top = (below ? at.bottom + 4 : at.top - 4 - menu.offsetHeight) + 'px';
+    menu.style.top = (below ? at.bottom + 4 : Math.max(8, at.top - 4 - menu.offsetHeight)) + 'px';
     menu.style.left = Math.max(8, at.right - menu.offsetWidth) + 'px';
   },
   async 'remove-from-list'(el) {
-    el.closest('[popover]').hidePopover();
+    closeMenu(el);
     await api('DELETE', `/readlists/${el.dataset.list}/entries/${el.dataset.id}`);
-    document.querySelector(`#entries .entry[data-id="${el.dataset.id}"]`).remove();
+    rowOf(el).remove();
     // Keep the sidebar count in step; an emptied list reloads to show its empty state.
     if (!document.querySelector('#entries .entry')) return location.reload();
     const count = document.querySelector(`a[href="/?readlist_id=${el.dataset.list}"] b`);

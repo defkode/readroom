@@ -245,6 +245,22 @@ func TestFeedLifecycle(t *testing.T) {
 	if e.Summary != "A greeting." || !e.Read || !e.Starred {
 		t.Fatalf("patch entry: %+v", e)
 	}
+	// Marking "this and older" touches only unread articles from that one down, and can be undone.
+	var marked struct {
+		Marked int     `json:"marked"`
+		IDs    []int64 `json:"ids"`
+	}
+	a.call("POST", "/api/v1/entries/mark-read", map[string]any{"through": oldID}, &marked)
+	if marked.Marked != 1 || len(marked.IDs) != 1 || marked.IDs[0] != oldID {
+		t.Fatalf("mark read through the old entry: %+v", marked)
+	}
+	if resp := a.call("POST", "/api/v1/entries/mark-read", map[string]any{"through": 999}, nil); resp.StatusCode != 404 {
+		t.Fatalf("mark read through a missing entry: got %d, want 404", resp.StatusCode)
+	}
+	a.call("POST", "/api/v1/entries/mark-unread", map[string]any{"ids": marked.IDs}, &marked)
+	if marked.Marked != 1 {
+		t.Fatalf("undo mark read: %+v", marked)
+	}
 	a.call("GET", "/api/v1/entries?summary=missing", nil, &list)
 	if len(list.Entries) != 1 || list.Entries[0].ID != oldID {
 		t.Fatalf("summary=missing: %+v", list.Entries)
