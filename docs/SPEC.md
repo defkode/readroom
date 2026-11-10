@@ -119,7 +119,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   article it could not summarise.
 - `readroom summarize` works through the queue one article at a time (fetch, summarise, write back),
   up to `-limit` per run, and does not contact the model when the queue is empty.
-- **Schedule:** a systemd user timer (`deploy/systemd/`) runs it hourly on the owner's desktop against
+- **Schedule:** a systemd user timer (`deploy/systemd/`) checks the queue every 5 minutes on the owner's desktop and runs it against
   the local model. The job needs only `READROOM_TOKEN`, from `~/.config/readroom/env`.
 - `readroom summarize` is a reference client: any OpenAI-compatible server (tested with a local
   `qwen3.6-fast` through llama-server) or the `claude` CLI with Haiku, tools disabled so text inside an
@@ -199,7 +199,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Server never calls a model; summaries come through the API | the reader stays independent of which model is used and where it runs |
 | AI summaries are opt-in per feed, with a length threshold | the model works only where it adds something; short notes and comics are skipped |
 | A dedicated queue endpoint that returns ready plain text | a script or agent needs one request and no HTML parsing |
-| Summariser pulls one article at a time, hourly, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the NAS is too small to run a model |
+| Summariser pulls one article at a time, checking every 5 minutes, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the NAS is too small to run a model |
 | The scheduled job needs only `READROOM_TOKEN` | one secret in one file; everything else is fixed in the unit |
 | One summariser at a time, no leasing | simplest thing that works for one person; add leasing if several workers are ever needed |
 | Excerpt from the feed's teaser, else the first real paragraph, else the image caption | every article shows something useful without waiting for a model |
@@ -219,7 +219,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
-- Summaries are produced only while the owner's desktop is on: the hourly job and the model run there,
+- Summaries are produced only while the owner's desktop is on: the scheduled job and the model run there,
   not on the NAS.
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on
   a reMarkable.

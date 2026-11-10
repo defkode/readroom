@@ -1,9 +1,11 @@
 [Unit]
-Description=Readroom: summarise queued articles every hour
+Description=Readroom: check the summary queue every 5 minutes
 
 [Timer]
-OnCalendar=hourly
-RandomizedDelaySec=5min
+# A check is one small request; the model is only used when something is queued,
+# and a run still in progress is never started twice.
+OnCalendar=*:0/5
+RandomizedDelaySec=30s
 # Catch up after the machine was off or asleep.
 Persistent=true
 

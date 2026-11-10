@@ -93,7 +93,7 @@ It takes one article at a time — fetch, summarise, write back — until the qu
 (default 20) is reached, so it never holds work locally and can be interrupted safely. With an empty
 queue it does not touch the model at all.
 
-To run it every hour on the machine that has the model, install the user units in `deploy/systemd/`
+To have the queue checked every 5 minutes on the machine that has the model, install the user units in `deploy/systemd/`
 (instructions at the top of the service file). The job needs a single environment variable,
 `READROOM_TOKEN`, read from `~/.config/readroom/env`; until that is filled in, runs are skipped.
 
