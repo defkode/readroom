@@ -3,8 +3,11 @@
 #
 # Before creating the app, build dist/readroom-arm64.tar with "make image-qnap",
 # copy it to a NAS share and import it under Container Station -> Images -> Import.
-# On first start, open the tailscale container's log and follow the login link.
-# The access token is generated at /share/Container/readroom/token.
+# On first start, open the tailscale container's log and follow the newest login
+# link within 60 seconds (the container restarts with a fresh link after that).
+#
+# Replace CHANGE_ME below with your own token (openssl rand -hex 24) in Container
+# Station's editor, and keep it in a password manager. Never commit the real value.
 services:
   tailscale:
     image: tailscale/tailscale:latest
@@ -41,7 +44,9 @@ services:
     pull_policy: never
     user: "0:0" # the bind-mounted share is not writable by the image's default user
     environment:
-      - READROOM_TOKEN_FILE=/data/token
+      # Set directly rather than through READROOM_TOKEN_FILE: a token file written by
+      # the container is root-only on the share, and File Station cannot open it.
+      - READROOM_TOKEN=CHANGE_ME
       - READROOM_INTERVAL=30m
     volumes:
       - /share/Container/readroom:/data
