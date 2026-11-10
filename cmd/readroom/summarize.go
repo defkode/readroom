@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -31,7 +32,7 @@ func summarize(args []string) error {
 	llmURL := fs.String("llm", env("LLM_URL", "http://127.0.0.1:8080/v1"), "OpenAI-compatible base URL (openai backend)")
 	llmKey := fs.String("llm-key", os.Getenv("LLM_API_KEY"), "API key for the LLM server, if it needs one")
 	model := fs.String("model", "", `model name (default: the server's default, or "haiku" for claude)`)
-	limit := fs.Int("limit", 20, "maximum number of articles to summarise in this run")
+	limit := fs.Int("limit", 20, "stop after this many articles in one run (0 = until the queue is empty)")
 	feedID := fs.Int64("feed", 0, "only this feed id")
 	maxChars := fs.Int("max-chars", 24000, "truncate article text to this many characters")
 	fs.Parse(args)
@@ -58,36 +59,60 @@ func summarize(args []string) error {
 		return errors.New(`-backend must be "openai" or "claude"`)
 	}
 
-	// The server decides what needs a summary (feeds with AI summaries on, long
-	// enough, full copy ready) and hands over plain text ready for a prompt.
-	path := fmt.Sprintf("/api/v1/summaries/pending?limit=%d&max_chars=%d", *limit, *maxChars)
-	if *feedID != 0 {
-		path += fmt.Sprintf("&feed_id=%d", *feedID)
+	// Work through the server's queue one article at a time: fetch the next one,
+	// summarise it, write it back, repeat. The server decides what needs a summary
+	// and hands over plain text ready for a prompt; nothing is held locally, so a
+	// run can be interrupted at any point.
+	type item struct {
+		ID    int64  `json:"id"`
+		Title string `json:"title"`
+		Text  string `json:"text"`
 	}
-	var queue struct {
-		Entries []struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
-			Text  string `json:"text"`
-		} `json:"entries"`
-		Remaining int `json:"remaining"`
+	next := func(skip []string) (*item, int, error) {
+		path := fmt.Sprintf("/api/v1/summaries/pending?limit=1&max_chars=%d", *maxChars)
+		if *feedID != 0 {
+			path += fmt.Sprintf("&feed_id=%d", *feedID)
+		}
+		if len(skip) > 0 {
+			path += "&exclude=" + strings.Join(skip, ",")
+		}
+		var queue struct {
+			Entries   []item `json:"entries"`
+			Remaining int    `json:"remaining"`
+		}
+		if err := c.do("GET", path, nil, &queue); err != nil {
+			return nil, 0, err
+		}
+		if len(queue.Entries) == 0 {
+			return nil, 0, nil
+		}
+		return &queue.Entries[0], queue.Remaining, nil
 	}
-	if err := c.do("GET", path, nil, &queue); err != nil {
-		return err
-	}
-	if len(queue.Entries) == 0 {
-		fmt.Println("nothing to summarise (turn on \"AI summary\" for a feed to queue its articles)")
-		return nil
-	}
+
 	ctx := context.Background()
-	done := 0
-	for _, e := range queue.Entries {
+	var skipped []string
+	done, waiting := 0, 0
+	for *limit <= 0 || done < *limit {
+		e, remaining, err := next(skipped)
+		if err != nil {
+			return err
+		}
+		if e == nil {
+			waiting = 0
+			break
+		}
+		if slices.Contains(skipped, fmt.Sprint(e.ID)) {
+			break // a server too old to honour "exclude" keeps offering the same article
+		}
 		start := time.Now()
 		summary, err := ask(ctx, "Title: "+e.Title+"\n\n"+e.Text)
 		if err != nil {
 			return fmt.Errorf("entry %d: %w", e.ID, err)
 		}
+		waiting = remaining - 1
 		if summary == "" {
+			// Leave it queued for another day, but don't ask for it again in this run.
+			skipped = append(skipped, fmt.Sprint(e.ID))
 			fmt.Printf("skip  #%d %s (model returned nothing)\n", e.ID, e.Title)
 			continue
 		}
@@ -98,7 +123,12 @@ func summarize(args []string) error {
 		done++
 		fmt.Printf("done  #%d %s (%.1fs)\n", e.ID, e.Title, time.Since(start).Seconds())
 	}
-	fmt.Printf("%d summarised, %d still waiting\n", done, queue.Remaining-done)
+	switch {
+	case done == 0 && len(skipped) == 0:
+		fmt.Println("nothing to summarise")
+	default:
+		fmt.Printf("%d summarised, %d skipped, %d still waiting\n", done, len(skipped), waiting+len(skipped))
+	}
 	return nil
 }
 
@@ -128,6 +158,9 @@ func (c *client) do(method, path string, body, out any) error {
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return errors.New("the server rejected the access token: set READROOM_TOKEN (or pass -token)")
+		}
 		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
 	}
 	if out != nil {

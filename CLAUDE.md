@@ -50,3 +50,9 @@ Gotchas learned the hard way:
 The server never calls a model. `readroom summarize` (or any agent) reads
 `GET /api/v1/summaries/pending` and writes back with `PUT /api/v1/entries/{id}/summary`. Feeds opt in
 with their "AI summary" setting. See SPEC §4.
+
+On the owner's desktop a systemd user timer (`readroom-summarize.timer`, units in `deploy/systemd/`)
+runs `~/.local/bin/readroom summarize` hourly against the local llama-server (`qwen3.6-fast`). It reads
+only `READROOM_TOKEN` from `~/.config/readroom/env`. After changing the summariser, reinstall the
+binary there (`install -D bin/readroom ~/.local/bin/readroom`). Check it with
+`systemctl --user status readroom-summarize` and `journalctl --user -u readroom-summarize`.

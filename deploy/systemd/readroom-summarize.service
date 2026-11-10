@@ -1,0 +1,20 @@
+# Summarises Readroom's queue with a local model, one article at a time.
+# Install as a user unit:
+#   cp deploy/systemd/readroom-summarize.* ~/.config/systemd/user/
+#   install -D bin/readroom ~/.local/bin/readroom
+#   systemctl --user daemon-reload && systemctl --user enable --now readroom-summarize.timer
+# The only thing it needs from you is the access token, in ~/.config/readroom/env:
+#   READROOM_TOKEN=...            (chmod 600)
+[Unit]
+Description=Readroom: summarise queued articles with the local model
+After=llama-server.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/readroom/env
+# Skip quietly until the token has been filled in.
+ExecCondition=/bin/sh -c 'grep -q "^READROOM_TOKEN=." %h/.config/readroom/env'
+# Edit -api to your Readroom address; -llm is any OpenAI-compatible server.
+ExecStart=%h/.local/bin/readroom summarize -api https://readroom.example.ts.net -llm http://127.0.0.1:8080/v1 -model qwen3.6-fast -limit 20
+Nice=10
+TimeoutStartSec=45min

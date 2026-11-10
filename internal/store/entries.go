@@ -310,11 +310,20 @@ const pendingSummaryWhere = `f.ai_summary = 1 AND e.summary = '' AND e.text_leng
 // PendingSummaries lists entries waiting for an AI summary, newest first: their
 // feed has AI summaries on, they have none yet, and the text is at least
 // minChars long. It also returns how many are waiting in total.
-func (s *Store) PendingSummaries(ctx context.Context, minChars int, feedID int64, limit int) ([]*Entry, int, error) {
+//
+// exclude lists entry ids to leave out, so a client working through the queue
+// one article at a time can step past one it could not summarise.
+func (s *Store) PendingSummaries(ctx context.Context, minChars int, feedID int64, exclude []int64, limit int) ([]*Entry, int, error) {
 	where, args := pendingSummaryWhere, []any{minChars}
 	if feedID != 0 {
 		where += ` AND e.feed_id = ?`
 		args = append(args, feedID)
+	}
+	if len(exclude) > 0 {
+		where += ` AND e.id NOT IN (?` + strings.Repeat(`, ?`, len(exclude)-1) + `)`
+		for _, id := range exclude {
+			args = append(args, id)
+		}
 	}
 	var total int
 	if err := s.db.QueryRowContext(ctx,

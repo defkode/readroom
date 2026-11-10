@@ -78,7 +78,8 @@ copy is stored. Each item carries the plain text, ready for a prompt:
 ```
 
 Write the result back with `PUT /api/v1/entries/42/summary` and `{"summary": "…", "model": "qwen3.6"}`.
-The queue has no locking: run one summariser at a time.
+`exclude=4,9` leaves out ids a client wants to step past. The queue has no locking: run one summariser
+at a time.
 
 `readroom summarize` is an ordinary client of that queue:
 
@@ -88,7 +89,13 @@ readroom summarize -llm http://127.0.0.1:8080/v1 -model qwen3.6-fast   # any Ope
 readroom summarize -backend claude                                     # claude CLI, Haiku, tools disabled
 ```
 
-Run it from cron or a systemd timer on the machine that has the model; `-api` points it at the NAS.
+It takes one article at a time — fetch, summarise, write back — until the queue is empty or `-limit`
+(default 20) is reached, so it never holds work locally and can be interrupted safely. With an empty
+queue it does not touch the model at all.
+
+To run it every hour on the machine that has the model, install the user units in `deploy/systemd/`
+(instructions at the top of the service file). The job needs a single environment variable,
+`READROOM_TOKEN`, read from `~/.config/readroom/env`; until that is filled in, runs are skipped.
 
 ## Layout
 

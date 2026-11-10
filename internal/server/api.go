@@ -347,7 +347,13 @@ func (s *Server) apiPendingSummaries(w http.ResponseWriter, r *http.Request) {
 		maxChars = 24000
 	}
 	feedID, _ := strconv.ParseInt(q.Get("feed_id"), 10, 64)
-	entries, total, err := s.Store.PendingSummaries(r.Context(), s.SummaryMinChars, feedID, limit)
+	var exclude []int64
+	for _, part := range strings.Split(q.Get("exclude"), ",") {
+		if id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64); err == nil && len(exclude) < 500 {
+			exclude = append(exclude, id)
+		}
+	}
+	entries, total, err := s.Store.PendingSummaries(r.Context(), s.SummaryMinChars, feedID, exclude, limit)
 	if err != nil {
 		s.fail(w, err)
 		return

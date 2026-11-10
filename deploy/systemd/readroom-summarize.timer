@@ -1,0 +1,11 @@
+[Unit]
+Description=Readroom: summarise queued articles every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+# Catch up after the machine was off or asleep.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

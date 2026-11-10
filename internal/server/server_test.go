@@ -214,6 +214,11 @@ func TestFeedLifecycle(t *testing.T) {
 		!strings.Contains(first.Text, "full text of the article") || first.Title != "Hello & welcome" {
 		t.Fatalf("queue item: %+v", first)
 	}
+	// A client stepping through one at a time can skip an article it could not summarise.
+	a.call("GET", fmt.Sprintf("/api/v1/summaries/pending?limit=1&exclude=%d", newID), nil, &queue)
+	if len(queue.Entries) != 1 || queue.Entries[0].ID != oldID || queue.Remaining != 1 {
+		t.Fatalf("queue with exclude: %+v", queue)
+	}
 	// Writing a summary takes the article out of the queue; deleting it puts it back.
 	if resp := a.call("PUT", fmt.Sprintf("/api/v1/entries/%d/summary", oldID),
 		map[string]any{"summary": "Old news.", "model": "test"}, nil); resp.StatusCode != 200 {
