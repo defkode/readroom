@@ -31,6 +31,8 @@ func (s *Server) loadTemplates() {
 			return *v
 		},
 		"readWhen": readWhen,
+		"shortDay": shortDay,
+		"brief":    briefError,
 		"static":   func(name string) string { return "/static/" + name + "?v=" + assetVersion },
 		"html":     func(v string) template.HTML { return template.HTML(v) }, // content is sanitised on ingest
 		"icon": func(name string) template.HTML {
@@ -115,6 +117,44 @@ func readWhen(v *string) string {
 	}
 }
 
+// shortDay renders a stored time as a day, e.g. "3 Nov" (with the year if it is not this one).
+func shortDay(v *string) string {
+	if v == nil {
+		return ""
+	}
+	t, err := time.Parse(store.TimeFormat, *v)
+	if err != nil {
+		return ""
+	}
+	t = t.Local()
+	if t.Year() != time.Now().Year() {
+		return t.Format("2 Jan 2006")
+	}
+	return t.Format("2 Jan")
+}
+
+// briefError turns a fetch error into a few words fit for a list.
+func briefError(msg string) string {
+	switch low := strings.ToLower(msg); {
+	case strings.HasPrefix(msg, "HTTP "):
+		return msg
+	case strings.HasPrefix(low, "not a feed"):
+		return "no longer a feed"
+	case strings.Contains(low, "no such host"):
+		return "address not found"
+	case strings.Contains(low, "timeout") || strings.Contains(low, "deadline exceeded"):
+		return "timed out"
+	case strings.Contains(low, "connection refused"):
+		return "connection refused"
+	case strings.Contains(low, "certificate"):
+		return "certificate problem"
+	}
+	if r := []rune(msg); len(r) > 60 {
+		return string(r[:60]) + "…"
+	}
+	return msg
+}
+
 func dayOf(v *string) string {
 	if v == nil || len(*v) < 10 {
 		return ""
@@ -138,6 +178,7 @@ type shell struct {
 	Reader    bool // article view: no title in the top bar, no tab bar
 	Unread    int
 	Groups    []navGroup
+	Broken    []*store.Feed // feeds that have stopped updating, for the notice and the Manage page
 	Readlists []*store.Readlist
 	Page      any
 }
@@ -154,6 +195,9 @@ func (s *Server) shell(r *http.Request, title, tab, active string) (*shell, erro
 	sh := &shell{Title: title, Tab: tab, Active: active, Auth: s.Token != "", Readlists: lists}
 	for _, f := range feeds {
 		sh.Unread += f.Unread
+		if f.Broken {
+			sh.Broken = append(sh.Broken, f)
+		}
 		if n := len(sh.Groups); n == 0 || sh.Groups[n-1].Category != f.Category {
 			sh.Groups = append(sh.Groups, navGroup{Category: f.Category})
 		}
@@ -209,6 +253,7 @@ type entriesPage struct {
 	CanMark    bool        // bulk "mark as read" applies here: a feed, a category or everything
 	Unread     int64       // how many articles "mark all as read" would mark
 	Feed       *store.Feed // set when the list is one feed, whose settings can be opened here
+	Notice     bool        // the main Unread list: the place to say that feeds have stopped updating
 	Categories []string    // for the feed settings sheet
 	Empty      string
 }
@@ -283,7 +328,8 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
-		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed}
+		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed,
+		Notice: !scoped && view == "unread" && f.Query == ""}
 	if feed != nil && q.Get("partial") == "" {
 		if page.Categories, err = s.Store.Categories(ctx); err != nil {
 			s.webFail(w, err)

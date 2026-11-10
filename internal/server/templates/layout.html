@@ -36,6 +36,7 @@
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
   <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></g></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
@@ -48,11 +49,11 @@
 {{if ne .Tab "login"}}
 <aside class="sidebar">
   <div class="brand"><img src="/icon/192.png" alt="" width="28" height="28"> Readroom
-    <button class="iconbtn{{if or (eq .Active "manage") (eq .Active "lists")}} on{{end}}" data-action="open-menu" data-menu="settings-menu" aria-label="Settings" aria-haspopup="menu" title="Settings">{{icon "manage"}}</button>
+    <button class="iconbtn{{if or (eq .Active "manage") (eq .Active "lists")}} on{{end}}{{if .Broken}} alert{{end}}" data-action="open-menu" data-menu="settings-menu" aria-label="Settings" aria-haspopup="menu" title="Settings">{{icon "manage"}}</button>
     <button class="iconbtn" data-action="toggle-sidebar" aria-label="Hide sidebar" title="Hide sidebar">{{icon "sidebar"}}</button></div>
   {{/* Rarely needed, so on wide screens these live behind one button instead of a section of the sidebar. */}}
   <div id="settings-menu" class="menu" popover role="menu">
-    <a role="menuitem" href="/feeds">{{icon "rss"}}<span>Manage feeds</span></a>
+    <a role="menuitem" href="/feeds"{{if .Broken}} class="alert"{{end}}>{{icon "rss"}}<span>Manage feeds</span></a>
     <a role="menuitem" href="/readlists">{{icon "lists"}}<span>Manage readlists</span></a>
     <button role="menuitem" data-action="open-dialog" data-dialog="prefs-dialog">{{icon "type"}}<span>Display</span></button>
     <button role="menuitem" data-action="open-dialog" data-dialog="keys-dialog">{{icon "keyboard"}}<span>Keyboard shortcuts</span></button>
@@ -78,7 +79,7 @@
   <a href="/browse" class="{{if eq .Tab "browse"}}on{{end}}">{{icon "rss"}}<span>Feeds</span></a>
   <a href="/readlists" class="{{if eq .Tab "lists"}}on{{end}}">{{icon "lists"}}<span>Lists</span></a>
   <a href="/?view=starred" class="{{if eq .Tab "starred"}}on{{end}}">{{icon "star"}}<span>Starred</span></a>
-  <a href="/feeds" class="{{if eq .Tab "manage"}}on{{end}}">{{icon "manage"}}<span>Manage</span></a>
+  <a href="/feeds" class="{{if eq .Tab "manage"}}on{{end}}{{if .Broken}} alert{{end}}">{{icon "manage"}}<span>Manage</span></a>
 </nav>
 {{end}}
 {{if ne .Tab "login"}}
@@ -185,7 +186,7 @@
   {{range .Groups}}
   <h2><a href="/?category={{.Category}}" class="{{if eq $.Active (printf "cat:%s" .Category)}}on{{end}}">{{if .Category}}{{.Category}}{{else}}Uncategorised{{end}}</a></h2>
   <ul class="group">
-    {{range .Feeds}}<li><a href="/?feed_id={{.ID}}" class="{{if eq $.Active (printf "feed:%d" .ID)}}on{{end}}{{if .LastError}} err{{end}}">{{icon "rss"}}<span>{{.Title}}</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a></li>{{end}}
+    {{range .Feeds}}<li><a href="/?feed_id={{.ID}}" class="{{if eq $.Active (printf "feed:%d" .ID)}}on{{end}}{{if .Broken}} err{{end}}">{{icon "rss"}}<span>{{.Title}}</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a></li>{{end}}
   </ul>
   {{end}}
   {{if not .Groups}}<p class="hint">No feeds yet. Add one under Manage.</p>{{end}}

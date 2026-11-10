@@ -73,7 +73,10 @@ feed deletes its entries and any images no other entry uses. Timestamps are UTC 
 
 ### Feeds
 
-- Added by feed URL (no autodiscovery from a site's home page yet). A new feed is fetched at once.
+- Added by address. The address is checked before anything is saved: it must be a feed, or a page that
+  leads to one (a `<link rel="alternate">`, or a feed at a customary path such as `/feed.xml`), so a
+  site's home page or an article is enough. Otherwise the form says why. Changing a feed's address is
+  checked the same way; OPML import is not, and what fails there shows up as below.
 - Each feed is polled every `READROOM_INTERVAL` (default 30 minutes) using conditional requests; a
   background pass runs every minute and handles whatever is due.
 - Per feed, the owner can set: **name**, **category**, **keep local copies** with an optional
@@ -89,6 +92,22 @@ feed deletes its entries and any images no other entry uses. Timestamps are UTC 
 - A fetch skips items that would be deleted again, so a feed that still lists old articles does not
   bring them back as unread. A newly added feed therefore starts with at most the last `keep_days` days.
 - OPML import and export; categories map to OPML folders.
+
+### Feed health
+
+- Each feed records how many fetches in a row have failed, since when, and when one last worked. One
+  that works clears it.
+- After 3 failures in a row a feed counts as **broken** — at once if the server says it is gone for
+  good (HTTP 410). A single timeout changes nothing the reader sees.
+- A failing feed is retried less and less often: the interval doubles with each failure, up to once a
+  day. "Refresh now" and "Retry" ignore that.
+- A permanent redirect (301, 308) updates the stored address by itself.
+- Broken feeds are shown where they will be seen: a notice at the top of the main Unread list (it can
+  be dismissed per device and returns when the set of broken feeds changes), a "Needs attention"
+  section at the top of Manage feeds with Retry, the feed's name in red in the sidebar, and a dot on
+  the way to Manage feeds. Nothing is disabled or deleted automatically.
+- A feed that answers but has published nothing for 180 days is marked "No new articles since …" in
+  Manage feeds: it may have moved or stopped.
 
 ### Preservation ("keep local copies")
 
@@ -236,6 +255,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
 | Light and dark themes are neutral greys with a blue accent; only sepia is warm | the owner disliked the brown, paper-like palette in both modes and prefers macOS-style greys |
 | Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on the NAS every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
+| A feed is reported as broken only after 3 failed fetches in a row, on the Unread list rather than only in Manage feeds | one timeout is not news; and the place the owner looks every day is the only place a silent failure gets noticed |
+| Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -247,7 +268,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `b5f3651`. Later commits have only run locally
+- The NAS was updated on 2026-11-10 to the code at commit `2260711`. Later commits have only run locally
   until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
@@ -262,7 +283,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 10. Later
 
-- Feed autodiscovery from a site's home page.
+- Telling the owner about broken feeds outside the app (a webhook or ntfy), if the notice in the Unread
+  list proves too easy to miss.
 - Full-text search (SQLite FTS5).
 - Polish interface.
 - Automated multi-arch images in a registry with versioned tags, so the NAS updates by pulling and

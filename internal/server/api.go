@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"readroom/internal/export"
+	"readroom/internal/fetch"
 	"readroom/internal/htmlx"
 	"readroom/internal/store"
 )
@@ -42,11 +44,26 @@ func (s *Server) apiFeed(w http.ResponseWriter, r *http.Request) {
 
 func validFeedURL(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
+	if raw != "" && !strings.Contains(raw, "://") {
+		raw = "https://" + raw // "example.com/blog" is how people give an address
+	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", false
 	}
 	return raw, true
+}
+
+// addFeedError says in plain words why an address cannot be subscribed to.
+func addFeedError(err error) string {
+	var status *fetch.StatusError
+	switch {
+	case errors.Is(err, fetch.ErrNoFeed):
+		return "No feed found at that address or linked from it."
+	case errors.As(err, &status):
+		return fmt.Sprintf("That address answered with an error (HTTP %d).", status.Code)
+	}
+	return "Could not reach that address: " + err.Error()
 }
 
 func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +94,12 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	since, err := parseSince(in.PreserveSince)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Nothing is saved until the address proves to be a feed, or to lead to one.
+	feedURL, err = s.Fetcher.Probe(r.Context(), feedURL)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, addFeedError(err))
 		return
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
@@ -118,6 +141,13 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				bad(field)
 				return
+			}
+			// A corrected address is checked like a new one, and may be a page that leads to the feed.
+			if current, err := s.Store.Feed(r.Context(), pathID(r, "id")); err == nil && current.URL != u {
+				if u, err = s.Fetcher.Probe(r.Context(), u); err != nil {
+					writeError(w, http.StatusUnprocessableEntity, addFeedError(err))
+					return
+				}
 			}
 			p.URL = &u
 		case "title":

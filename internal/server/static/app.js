@@ -110,6 +110,16 @@ const keepCopy = async (id) => {
   return false;
 };
 
+// The notice about feeds that stopped updating can be put away on this device;
+// it comes back when the set of failing feeds changes.
+const outageKey = 'readroom:outage';
+const outage = document.getElementById('outage');
+if (outage) {
+  let dismissed = null;
+  try { dismissed = localStorage.getItem(outageKey); } catch { /* always shown */ }
+  outage.hidden = dismissed === outage.dataset.key;
+}
+
 const actions = {
   async 'toggle-star'(el) {
     const on = !el.classList.contains('on');
@@ -196,6 +206,15 @@ const actions = {
     const feed = await api('POST', `/feeds/${el.closest('form').dataset.id}/refresh`);
     toast(`Refreshed · ${feed.total} articles`);
   },
+  async 'retry-feed'(el) {
+    await api('POST', `/feeds/${el.dataset.id}/refresh`); // a failure is reported by the caller
+    location.reload();
+  },
+  'dismiss-outage'(el) {
+    const notice = el.closest('.notice');
+    try { localStorage.setItem(outageKey, notice.dataset.key); } catch { /* shown again next time */ }
+    notice.hidden = true;
+  },
   async 'delete-feed'(el) {
     const form = el.closest('form');
     if (!confirm(`Delete "${form.title.value || form.title.placeholder}" and all its articles?`)) return;
@@ -243,7 +262,6 @@ const actions = {
 const submits = {
   async 'add-feed'(form) {
     const feed = await api('POST', '/feeds', { url: form.url.value, category: form.category.value });
-    if (feed.last_error) toast('Added, but the fetch failed: ' + feed.last_error);
     location.reload();
   },
   async 'save-feed'(form) {

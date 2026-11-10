@@ -4,10 +4,30 @@
 
 {{define "content"}}
 <form class="card row" data-action="add-feed">
-  <input name="url" type="url" placeholder="https://example.com/feed.xml" required autocomplete="off" aria-label="Feed URL">
+  <input name="url" inputmode="url" placeholder="Feed or site address" required autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Feed or site address">
   <input name="category" placeholder="Category" list="categories" autocomplete="off" aria-label="Category">
   <button class="btn">{{icon "plus"}} Add feed</button>
 </form>
+
+{{if .Broken}}
+<h2 class="section attention">{{icon "alert"}}Needs attention</h2>
+<ul class="list">
+  {{range .Broken}}
+  <li class="split">
+    <button class="rowbtn" data-action="edit-feed"
+      data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
+      data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}" data-keep="{{.KeepDays}}">
+      <span class="body">
+        <span class="title">{{.Title}}</span>
+        <span class="sub err">Failing since {{shortDay .FailingSince}} · {{brief .LastError}}{{if .LastOKAt}} · last worked {{shortDay .LastOKAt}}{{end}}</span>
+        <span class="sub">{{.URL}}</span>
+      </span>
+    </button>
+    <span class="rowactions"><button class="btn quiet" data-action="retry-feed" data-id="{{.ID}}">{{icon "refresh"}} Retry</button></span>
+  </li>
+  {{end}}
+</ul>
+{{end}}
 
 {{range .Groups}}
 <h2 class="section">{{if .Category}}{{.Category}}{{else}}Uncategorised{{end}}</h2>
@@ -20,7 +40,8 @@
       <span class="body">
         <span class="title">{{.Title}}</span>
         <span class="sub">{{.URL}}</span>
-        {{if .LastError}}<span class="sub err">{{.LastError}}</span>{{end}}
+        {{if .Broken}}<span class="sub err">Failing since {{shortDay .FailingSince}} · {{brief .LastError}}</span>
+        {{else if .Stale}}<span class="sub">No new articles since {{shortDay .LatestEntryAt}}</span>{{end}}
       </span>
       <span class="tags">
         {{if .AISummary}}<span class="tag">{{icon "ai"}}AI</span>{{end}}

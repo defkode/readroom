@@ -48,6 +48,17 @@ func origin(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/hello", article)
 	mux.HandleFunc("/old", article)
 	mux.HandleFunc("/pixel.png", func(w http.ResponseWriter, r *http.Request) { w.Write(pixel) })
+	// A home page that advertises the feed, an address that moved for good, and one that is gone.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `<html><head><title>Origin</title><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body>Welcome</body></html>`)
+	})
+	mux.HandleFunc("/moved.xml", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/feed.xml", http.StatusMovedPermanently)
+	})
 	srv = httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -464,5 +475,53 @@ func checkEPUB(t *testing.T, data []byte) {
 	}
 	if images != 1 || chapters != 1 {
 		t.Fatalf("epub: %d images and %d chapters, want 1 and 1", images, chapters)
+	}
+}
+
+// Only addresses that are a feed, or lead to one, can be subscribed to.
+func TestAddingFeedsIsValidated(t *testing.T) {
+	a, site := newApp(t), origin(t)
+	post := func(address string) (*http.Response, store.Feed) {
+		var feed store.Feed
+		resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": address, "keep_days": 0}, &feed)
+		return resp, feed
+	}
+
+	// A site with pages but no feed anywhere.
+	bare := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, "<html><body>No feed here</body></html>")
+	}))
+	t.Cleanup(bare.Close)
+
+	for _, bad := range []string{site.URL + "/missing.xml", bare.URL + "/", "http://127.0.0.1:1/feed.xml"} {
+		if resp, _ := post(bad); resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("adding %s: got %d, want 422", bad, resp.StatusCode)
+		}
+	}
+	var feeds []store.Feed
+	a.call("GET", "/api/v1/feeds", nil, &feeds)
+	if len(feeds) != 0 {
+		t.Fatalf("rejected addresses left %d feeds behind", len(feeds))
+	}
+
+	// A site's home page leads to its feed.
+	resp, feed := post(site.URL + "/")
+	if resp.StatusCode != http.StatusCreated || feed.URL != site.URL+"/feed.xml" || feed.Total != 2 {
+		t.Fatalf("adding the home page: status %d, feed %+v", resp.StatusCode, feed)
+	}
+	if feed.Broken || feed.FailCount != 0 || feed.LastOKAt == nil {
+		t.Errorf("a new feed should be healthy: %+v", feed)
+	}
+	// An address that has moved for good is saved as the new one, which is already here.
+	if resp, moved := post(site.URL + "/moved.xml"); resp.StatusCode != http.StatusOK || moved.ID != feed.ID {
+		t.Errorf("adding a moved address: status %d, feed %d, want the existing feed %d", resp.StatusCode, moved.ID, feed.ID)
+	}
+	// Correcting an address is checked the same way.
+	if resp := a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"url": bare.URL + "/"}, nil); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("changing to an address without a feed: got %d, want 422", resp.StatusCode)
 	}
 }

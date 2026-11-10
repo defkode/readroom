@@ -24,6 +24,12 @@ type Feed struct {
 	LastModified  string  `json:"-"`
 	LastFetchedAt *string `json:"last_fetched_at"`
 	LastError     string  `json:"last_error"`
+	FailCount     int     `json:"fail_count"`      // fetches failed in a row; 0 while healthy
+	FailingSince  *string `json:"failing_since"`   // first failure of the current run
+	LastOKAt      *string `json:"last_ok_at"`      // last fetch that worked
+	LatestEntryAt *string `json:"latest_entry_at"` // newest article it has
+	Broken        bool    `json:"broken"`          // has failed often enough to need attention
+	Stale         bool    `json:"stale"`           // answers, but has published nothing for a long time
 	CreatedAt     string  `json:"created_at"`
 	Unread        int     `json:"unread"`
 	Total         int     `json:"total"`
@@ -32,6 +38,7 @@ type Feed struct {
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
        f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
+       f.fail_count, f.failing_since, f.last_ok_at, (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id)
 FROM feeds f`
@@ -40,6 +47,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
 		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
+		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.LatestEntryAt,
 		&f.Unread, &f.Total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -53,6 +61,10 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	}
 	if f.Title == "" {
 		f.Title = f.URL
+	}
+	f.Broken = f.FailCount >= BrokenAfter
+	if !f.Broken && f.LatestEntryAt != nil {
+		f.Stale = *f.LatestEntryAt < time.Now().UTC().Add(-StaleAfter).Format(TimeFormat)
 	}
 	return &f, nil
 }
@@ -79,11 +91,15 @@ func (s *Store) Feed(ctx context.Context, id int64) (*Feed, error) {
 	return scanFeed(s.db.QueryRowContext(ctx, feedSelect+` WHERE f.id = ?`, id))
 }
 
-// FeedsDue returns feeds never fetched or last fetched before the cutoff.
-func (s *Store) FeedsDue(ctx context.Context, olderThan time.Duration) ([]*Feed, error) {
-	cutoff := time.Now().UTC().Add(-olderThan).Format(TimeFormat)
+// FeedsDue returns the feeds whose next fetch is due: never fetched, or last
+// fetched longer ago than the interval. A failing feed is retried less and less
+// often (the interval doubles with each failure, up to a day), so a dead address
+// is not asked every half hour for ever.
+func (s *Store) FeedsDue(ctx context.Context, interval time.Duration) ([]*Feed, error) {
+	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, feedSelect+
-		` WHERE f.last_fetched_at IS NULL OR f.last_fetched_at < ? ORDER BY f.last_fetched_at`, cutoff)
+		` WHERE f.last_fetched_at IS NULL OR f.last_fetched_at < ? ORDER BY f.last_fetched_at`,
+		now.Add(-interval).Format(TimeFormat))
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +110,27 @@ func (s *Store) FeedsDue(ctx context.Context, olderThan time.Duration) ([]*Feed,
 		if err != nil {
 			return nil, err
 		}
+		if f.LastFetchedAt != nil && f.FailCount > 0 {
+			wait := min(interval<<min(f.FailCount, 10), maxFetchWait)
+			if *f.LastFetchedAt >= now.Add(-wait).Format(TimeFormat) {
+				continue
+			}
+		}
 		feeds = append(feeds, f)
 	}
 	return feeds, rows.Err()
 }
+
+// BrokenAfter is how many fetches in a row must fail before a feed is reported
+// as broken: one timeout is not news, an afternoon of them is.
+const BrokenAfter = 3
+
+// StaleAfter is how long a working feed may publish nothing before that is
+// pointed out; the blog may have moved or stopped.
+const StaleAfter = 180 * 24 * time.Hour
+
+// maxFetchWait caps how far apart retries of a failing feed drift.
+const maxFetchWait = 24 * time.Hour
 
 // DefaultKeepDays is how long a new feed's articles are kept unless it says otherwise.
 const DefaultKeepDays = 365
@@ -178,20 +211,44 @@ func (s *Store) DeleteFeed(ctx context.Context, id int64) error {
 	return s.pruneAssets(ctx)
 }
 
-// FeedFetched records the outcome of a fetch. fetchErr may be nil.
-func (s *Store) FeedFetched(ctx context.Context, id int64, feedTitle, siteURL, etag, lastModified string, fetchErr error) error {
-	if fetchErr != nil {
-		_, err := s.db.ExecContext(ctx, `UPDATE feeds SET last_fetched_at = ?, last_error = ? WHERE id = ?`,
-			Now(), fetchErr.Error(), id)
+// FetchOutcome is what one fetch of a feed found.
+type FetchOutcome struct {
+	Err  error
+	Gone bool // the server says the feed is gone for good (HTTP 410): broken at once
+
+	// On success:
+	Title, SiteURL, ETag, LastModified string
+	MovedTo                            string // the feed's new address after a permanent redirect
+}
+
+// FeedFetched records the outcome of a fetch.
+func (s *Store) FeedFetched(ctx context.Context, id int64, o FetchOutcome) error {
+	now := Now()
+	if o.Err != nil {
+		floor := 0
+		if o.Gone {
+			floor = BrokenAfter
+		}
+		_, err := s.db.ExecContext(ctx, `
+UPDATE feeds SET last_fetched_at = ?, last_error = ?, fail_count = max(fail_count + 1, ?),
+       failing_since = coalesce(failing_since, ?)
+WHERE id = ?`, now, o.Err.Error(), floor, now, id)
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
-UPDATE feeds SET last_fetched_at = ?, last_error = '',
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE feeds SET last_fetched_at = ?, last_ok_at = ?, last_error = '', fail_count = 0, failing_since = NULL,
        feed_title = CASE WHEN ? != '' THEN ? ELSE feed_title END,
        site_url   = CASE WHEN ? != '' THEN ? ELSE site_url END,
        etag = ?, last_modified = ?
-WHERE id = ?`, Now(), feedTitle, feedTitle, siteURL, siteURL, etag, lastModified, id)
-	return err
+WHERE id = ?`, now, now, o.Title, o.Title, o.SiteURL, o.SiteURL, o.ETag, o.LastModified, id); err != nil {
+		return err
+	}
+	if o.MovedTo != "" {
+		// Follow the feed to its new home, unless that address is already subscribed to.
+		_, err := s.db.ExecContext(ctx, `UPDATE OR IGNORE feeds SET url = ? WHERE id = ?`, o.MovedTo, id)
+		return err
+	}
+	return nil
 }
 
 // Categories lists the distinct non-empty category names in use.

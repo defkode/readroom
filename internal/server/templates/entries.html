@@ -3,6 +3,16 @@
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
+{{if and .Notice $.Broken}}
+{{/* Shown unless this exact set of outages was dismissed on this device (see app.js). */}}
+<div class="notice" id="outage" hidden data-key="{{range $.Broken}}{{.ID}}@{{deref .FailingSince}} {{end}}">
+  {{icon "alert"}}
+  <p>{{if eq (len $.Broken) 1}}A feed has{{else}}{{len $.Broken}} feeds have{{end}} stopped updating:
+    {{range $i, $f := $.Broken}}{{if $i}}, {{end}}<b>{{$f.Title}}</b> ({{brief $f.LastError}}, since {{shortDay $f.FailingSince}}){{end}}.
+    <a href="/feeds">Fix in Manage feeds</a></p>
+  <button class="iconbtn" data-action="dismiss-outage" aria-label="Dismiss" title="Dismiss">{{icon "close"}}</button>
+</div>
+{{end}}
 <div class="filters">
   <div class="segmented" role="tablist">
     {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}{{if .Count}}<b>{{.Count}}</b>{{end}}</a>{{end}}

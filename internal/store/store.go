@@ -110,6 +110,14 @@ ALTER TABLE feeds ADD COLUMN keep_days INTEGER NOT NULL DEFAULT 365;
 -- When the entry was marked read; NULL while unread, and for entries read before this was recorded.
 ALTER TABLE entries ADD COLUMN read_at TEXT;
 `,
+	`
+-- Feed health: how many fetches in a row have failed, since when, and when one last worked.
+ALTER TABLE feeds ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE feeds ADD COLUMN failing_since TEXT;
+ALTER TABLE feeds ADD COLUMN last_ok_at TEXT;
+UPDATE feeds SET fail_count = 1, failing_since = last_fetched_at WHERE last_error != '';
+UPDATE feeds SET last_ok_at = last_fetched_at WHERE last_error = '';
+`,
 }
 
 func Open(path string) (*Store, error) {

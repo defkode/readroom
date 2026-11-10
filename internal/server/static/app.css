@@ -393,6 +393,21 @@ body.bare .main { display: grid; place-items: center; padding: 24px; }
 .keys dd { margin: 0; }
 kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px solid var(--sep); border-bottom-width: 2px; border-radius: 6px; background: var(--surface); font: 600 .82rem/1.3 ui-monospace, Menlo, Consolas, monospace; text-align: center; }
 
+/* ---- feeds that stopped updating ------------------------------------------ */
+.notice { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 10px 6px 10px 12px; border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 9%, var(--surface)); font-size: .9rem; }
+.notice > .icon { margin-top: 2px; width: 18px; height: 18px; color: var(--danger); }
+.notice p { flex: 1; min-width: 0; }
+.notice a { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.notice .iconbtn { width: 32px; height: 32px; margin: -5px 0; color: var(--muted); }
+.notice .iconbtn .icon { width: 16px; height: 16px; }
+.section.attention { color: var(--danger); }
+.section.attention .icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }
+/* A dot on the way to Manage feeds while something there needs attention. */
+.alert { position: relative; }
+.alert::after { content: ""; position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); }
+.tabbar a.alert::after { top: 8px; right: calc(50% - 16px); }
+.menu a.alert::after { top: 50%; right: 12px; margin-top: -3px; }
+
 /* ---- toast -------------------------------------------------------------- */
 #toast {
   position: fixed; left: 50%; bottom: calc(var(--tabbar) + var(--safe-b) + 16px); z-index: 100;
