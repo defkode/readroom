@@ -207,7 +207,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS runs the first deployed version; everything after commit `65722c6` has only run locally.
+- The NAS was updated on 2026-11-10 to the code at commit `eb74e49`. Later commits have only run locally
+  until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
