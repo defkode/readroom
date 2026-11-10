@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html/template"
 	"image"
@@ -257,161 +258,197 @@ type entriesPage struct {
 	HiddenView bool        // the list of hidden articles, whose rows offer to show them again
 	ByArrival  bool        // the list is in arrival order, which "this and older" must follow
 	Categories []string    // for the feed settings sheet
+	Lists      listsSheet  // for the readlists sheet
 	Empty      string
 }
 
-func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := entryFilter(q)
+// listing is what a list page was asked for: which entries, in which view, and
+// how the page around them is titled and marked.
+type listing struct {
+	filter store.EntryFilter
+	view   string      // unread, all, starred or hidden
+	scope  url.Values  // what narrows the list (a feed, a category or a readlist), as query parameters
+	feed   *store.Feed // set when the scope is one feed
+	empty  string      // what to say when nothing matches
+
+	title, tab, active string // for the shell: page title, tab-bar item, sidebar row
+}
+
+// scoped reports whether the list is narrowed to a feed, category or readlist.
+func (l *listing) scoped() bool { return len(l.scope) > 0 }
+
+// link builds an address within the same scope.
+func (l *listing) link(extra url.Values) string {
+	v := url.Values{}
+	for k, vals := range l.scope {
+		v[k] = vals
+	}
+	for k, vals := range extra {
+		v[k] = vals
+	}
+	return "/?" + v.Encode()
+}
+
+// listingFor works out the list a request asks for: first its scope, then its view.
+func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error) {
+	l := &listing{filter: entryFilter(q), view: q.Get("view"), scope: url.Values{},
+		title: "Unread", tab: "unread", active: "view:unread", empty: "Nothing here yet."}
+	f := &l.filter
 	f.Limit = 40
-	view := q.Get("view")
-	title, tab, active := "Unread", "unread", "view:unread"
-	scope := url.Values{}
-	ctx := r.Context()
-	var feed *store.Feed
 
 	switch {
 	case f.ReadlistID != 0:
-		l, err := s.Store.Readlist(ctx, f.ReadlistID)
+		list, err := s.Store.Readlist(ctx, f.ReadlistID)
 		if err != nil {
-			s.webFail(w, err)
-			return
+			return nil, err
 		}
-		title, tab, active = l.Name, "lists", "list:"+strconv.FormatInt(l.ID, 10)
-		scope.Set("readlist_id", strconv.FormatInt(l.ID, 10))
-		if view == "" {
-			view = "all"
+		id := strconv.FormatInt(list.ID, 10)
+		l.title, l.tab, l.active = list.Name, "lists", "list:"+id
+		l.scope.Set("readlist_id", id)
+		if l.view == "" {
+			l.view = "all"
 		}
 	case f.FeedID != 0:
-		var err error
-		if feed, err = s.Store.Feed(ctx, f.FeedID); err != nil {
-			s.webFail(w, err)
-			return
+		feed, err := s.Store.Feed(ctx, f.FeedID)
+		if err != nil {
+			return nil, err
 		}
-		title, tab, active = feed.Title, "browse", "feed:"+strconv.FormatInt(feed.ID, 10)
-		scope.Set("feed_id", strconv.FormatInt(feed.ID, 10))
+		id := strconv.FormatInt(feed.ID, 10)
+		l.feed, l.title, l.tab, l.active = feed, feed.Title, "browse", "feed:"+id
+		l.scope.Set("feed_id", id)
 	case f.Category != nil:
-		title, tab, active = *f.Category, "browse", "cat:"+*f.Category
-		if title == "" {
-			title = "Uncategorised"
+		l.title, l.tab, l.active = *f.Category, "browse", "cat:"+*f.Category
+		if l.title == "" {
+			l.title = "Uncategorised"
 		}
-		scope.Set("category", *f.Category)
+		l.scope.Set("category", *f.Category)
 	}
-	if view == "" {
-		view = "unread"
-	}
-	scoped := len(scope) > 0
-	empty := "Nothing here yet."
-	switch view {
-	case "unread":
+
+	switch l.view {
+	case "", "unread":
+		l.view = "unread"
 		unread := false
 		f.Read = &unread
 		// What arrived last comes first, so a newly added feed's articles are not
 		// buried among older ones; the other views are an archive, by publication.
 		f.ByArrival = true
-		empty = "You're all caught up."
+		l.empty = "You're all caught up."
 	case "starred":
 		starred := true
 		f.Starred = &starred
-		empty = "No starred articles."
-		if !scoped {
-			title, tab, active = "Starred", "starred", "view:starred"
+		l.empty = "No starred articles."
+		if !l.scoped() {
+			l.title, l.tab, l.active = "Starred", "starred", "view:starred"
 		}
 	case "hidden":
 		// What the owner put away, across everything; the one place it can be brought back.
-		f = store.EntryFilter{Hidden: true, Query: f.Query, Before: f.Before, Limit: f.Limit}
-		scope, scoped, feed = url.Values{}, false, nil
-		empty = "Nothing is hidden."
-		title, tab, active = "Hidden articles", "manage", "hidden"
+		*f = store.EntryFilter{Hidden: true, Query: f.Query, Before: f.Before, Limit: f.Limit}
+		l.scope, l.feed = url.Values{}, nil
+		l.empty = "Nothing is hidden."
+		l.title, l.tab, l.active = "Hidden articles", "manage", "hidden"
 	default:
-		view = "all"
-		if !scoped {
-			title, tab, active = "All articles", "unread", "view:all"
+		l.view = "all"
+		if !l.scoped() {
+			l.title, l.tab, l.active = "All articles", "unread", "view:all"
 		}
 	}
 	if f.Query != "" {
-		empty = "No matches."
+		l.empty = "No matches."
 	}
+	return l, nil
+}
 
+// viewTabs is the Unread / All / Starred switcher for a list, each tab saying
+// how many articles it holds in the list's scope and search.
+func (s *Server) viewTabs(ctx context.Context, l *listing) ([]viewTab, error) {
+	if l.view == "hidden" {
+		return nil, nil // not a view of a list: it has no siblings
+	}
+	var tabs []viewTab
+	for _, t := range [][2]string{{"unread", "Unread"}, {"all", "All"}, {"starred", "Starred"}} {
+		count := store.EntryFilter{FeedID: l.filter.FeedID, Category: l.filter.Category,
+			ReadlistID: l.filter.ReadlistID, Query: l.filter.Query}
+		switch t[0] {
+		case "unread":
+			unread := false
+			count.Read = &unread
+		case "starred":
+			starred := true
+			count.Starred = &starred
+		}
+		n, err := s.Store.CountEntries(ctx, count)
+		if err != nil {
+			return nil, err
+		}
+		tabs = append(tabs, viewTab{Label: t[1], URL: l.link(url.Values{"view": {t[0]}}), Active: l.view == t[0], Count: n})
+	}
+	return tabs, nil
+}
+
+func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
+	ctx, q := r.Context(), r.URL.Query()
+	l, err := s.listingFor(ctx, q)
+	if err != nil {
+		s.webFail(w, err)
+		return
+	}
+	f := l.filter
 	entries, err := s.Store.Entries(ctx, f)
 	if err != nil {
 		s.webFail(w, err)
 		return
 	}
-	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
-		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed,
-		Notice: !scoped && view == "unread" && f.Query == "", HiddenView: view == "hidden", ByArrival: f.ByArrival}
-	if feed != nil && q.Get("partial") == "" {
-		if page.Categories, err = s.Store.Categories(ctx); err != nil {
-			s.webFail(w, err)
-			return
-		}
+	page := entriesPage{Entries: entries, View: l.view, Query: f.Query, Hidden: map[string]string{"view": l.view},
+		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: l.empty, Feed: l.feed,
+		Notice: !l.scoped() && l.view == "unread" && f.Query == "", HiddenView: l.view == "hidden", ByArrival: f.ByArrival,
+		// Bulk marking covers a whole feed, category or everything, so it is not offered
+		// where the list shows a narrower selection (a readlist, starred, hidden, a search).
+		CanMark: f.ReadlistID == 0 && l.view != "starred" && l.view != "hidden" && f.Query == ""}
+	for k := range l.scope {
+		page.Hidden[k] = l.scope.Get(k)
 	}
-	// Bulk marking covers a whole feed, category or everything, so it is not offered
-	// where the list shows a narrower selection (a readlist, starred, a search).
-	if page.CanMark = f.ReadlistID == 0 && view != "starred" && view != "hidden" && f.Query == ""; page.CanMark && q.Get("partial") == "" {
+	if next := cursor(entries, f); next != "" {
+		more := url.Values{"view": {l.view}, "before": {next}, "partial": {"1"}}
+		if f.Query != "" {
+			more.Set("q", f.Query)
+		}
+		page.More = l.link(more)
+	}
+	if q.Get("partial") != "" {
+		// A further page of rows for "Load more": none of the chrome below is needed.
+		s.render(w, "entries", "items", page)
+		return
+	}
+
+	if page.Tabs, err = s.viewTabs(ctx, l); err != nil {
+		s.webFail(w, err)
+		return
+	}
+	if page.CanMark {
 		if page.Unread, err = s.Store.CountUnread(ctx, store.ReadScope{FeedID: f.FeedID, Category: f.Category}); err != nil {
 			s.webFail(w, err)
 			return
 		}
 	}
-	for k := range scope {
-		page.Hidden[k] = scope.Get(k)
+	if l.feed != nil {
+		if page.Categories, err = s.Store.Categories(ctx); err != nil {
+			s.webFail(w, err)
+			return
+		}
 	}
-	for _, t := range [][2]string{{"unread", "Unread"}, {"all", "All"}, {"starred", "Starred"}} {
-		if view == "hidden" {
-			break // not a view of a list: it has no siblings
-		}
-		link := url.Values{"view": {t[0]}}
-		for k, v := range scope {
-			link[k] = v
-		}
-		tab := viewTab{Label: t[1], URL: "/?" + link.Encode(), Active: view == t[0]}
-		if q.Get("partial") == "" {
-			// Each tab says how many articles it holds here.
-			count := store.EntryFilter{FeedID: f.FeedID, Category: f.Category, ReadlistID: f.ReadlistID, Query: f.Query}
-			switch t[0] {
-			case "unread":
-				unread := false
-				count.Read = &unread
-			case "starred":
-				starred := true
-				count.Starred = &starred
-			}
-			if tab.Count, err = s.Store.CountEntries(ctx, count); err != nil {
-				s.webFail(w, err)
-				return
-			}
-		}
-		page.Tabs = append(page.Tabs, tab)
-	}
-	if next := cursor(entries, f); next != "" {
-		more := url.Values{}
-		for k, v := range scope {
-			more[k] = v
-		}
-		more.Set("view", view)
-		more.Set("before", next)
-		more.Set("partial", "1")
-		if f.Query != "" {
-			more.Set("q", f.Query)
-		}
-		page.More = "/?" + more.Encode()
-	}
-	if q.Get("partial") != "" {
-		s.render(w, "entries", "items", page)
-		return
-	}
-	sh, err := s.shell(r, title, tab, active)
+	sh, err := s.shell(r, l.title, l.tab, l.active)
 	if err != nil {
 		s.webFail(w, err)
 		return
 	}
-	if scoped {
+	for _, list := range sh.Readlists {
+		page.Lists.Lists = append(page.Lists.Lists, listMembership{Readlist: list})
+	}
+	switch {
+	case f.ReadlistID != 0:
+		sh.Back = "/readlists"
+	case l.scoped():
 		sh.Back = "/browse"
-		if f.ReadlistID != 0 {
-			sh.Back = "/readlists"
-		}
 	}
 	sh.Page = page
 	s.render(w, "entries", "layout.html", sh)
@@ -434,11 +471,16 @@ type viewTab struct {
 
 type entryPage struct {
 	Entry     *store.Entry
-	Lists     []listMembership
-	Pending   bool // a local copy was requested and isn't ready yet
+	Lists     listsSheet
 	FirstRead bool // this very visit marked it read, so there is no earlier reading to report
 	Teaser    bool // the feed sends only teasers and this article has no fuller copy: offer one
 	Paragraph []string
+}
+
+// listsSheet is the readlists sheet's data: every list, and for an article which hold it.
+type listsSheet struct {
+	EntryID int64 // 0 in a list of articles, where the script supplies the row's article
+	Lists   []listMembership
 }
 
 type listMembership struct {
@@ -474,7 +516,7 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 	for _, lid := range e.Readlists {
 		member[lid] = true
 	}
-	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead}
+	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead, Lists: listsSheet{EntryID: e.ID}}
 	for _, g := range sh.Groups {
 		for _, feed := range g.Feeds {
 			if feed.ID == e.FeedID {
@@ -483,7 +525,7 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, l := range sh.Readlists {
-		page.Lists = append(page.Lists, listMembership{Readlist: l, Member: member[l.ID]})
+		page.Lists.Lists = append(page.Lists.Lists, listMembership{Readlist: l, Member: member[l.ID]})
 	}
 	sh.Page = page
 	s.render(w, "entry", "layout.html", sh)

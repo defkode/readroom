@@ -240,3 +240,22 @@
   </form>
 </dialog>
 {{end}}
+
+{{/* What the feed settings sheet needs to know about a feed, as attributes of the button that opens it. */}}
+{{define "feed-attrs"}}data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}" data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}" data-keep="{{.KeepDays}}"{{end}}
+
+{{/* The readlists sheet. In an article it knows the article and which lists hold it;
+     in a list of articles the script fills that in for the row it was opened from. */}}
+{{define "lists-dialog"}}
+<dialog id="lists-dialog" class="sheet">
+  <h2>Readlists</h2>
+  <ul class="list checks" id="list-checks">
+    {{range .Lists}}<li><label><input type="checkbox" data-action="toggle-list" data-list="{{.ID}}"{{if $.EntryID}} data-id="{{$.EntryID}}"{{end}}{{if .Member}} checked{{end}}><span>{{.Name}}</span></label></li>{{end}}
+  </ul>
+  <form class="row" data-action="create-list"{{if .EntryID}} data-id="{{.EntryID}}"{{end}}>
+    <input name="name" placeholder="New readlist" required autocomplete="off">
+    <button class="btn">Add</button>
+  </form>
+  <form method="dialog"><button class="btn quiet wide">Done</button></form>
+</dialog>
+{{end}}

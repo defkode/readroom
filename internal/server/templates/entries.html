@@ -38,24 +38,12 @@
   {{if .HiddenView}}<button role="menuitem" data-action="row-unhide">{{icon "eye"}}<span>Show again</span></button>
   {{else}}<button role="menuitem" data-action="row-hide">{{icon "hide"}}<span>Hide</span></button>{{end}}
 </div>
-{{/* The same sheet as in an article; the script ticks the lists the chosen row's article is in. */}}
-<dialog id="lists-dialog" class="sheet">
-  <h2>Readlists</h2>
-  <ul class="list checks" id="list-checks">
-    {{range $.Readlists}}<li><label><input type="checkbox" data-action="toggle-list" data-list="{{.ID}}"><span>{{.Name}}</span></label></li>{{end}}
-  </ul>
-  <form class="row" data-action="create-list">
-    <input name="name" placeholder="New readlist" required autocomplete="off">
-    <button class="btn">Add</button>
-  </form>
-  <form method="dialog"><button class="btn quiet wide">Done</button></form>
-</dialog>
+{{template "lists-dialog" .Lists}}
 {{if or .CanMark .Feed}}
 <div id="page-menu" class="menu" popover role="menu">
   {{if .CanMark}}<button role="menuitem" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if not .Unread}} disabled{{end}}>{{icon "checks"}}<span>{{if .Unread}}Mark all {{.Unread}} as read{{else}}Nothing unread here{{end}}</span></button>{{end}}
   {{with .Feed}}<button role="menuitem" data-action="edit-feed"
-    data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
-    data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}" data-keep="{{.KeepDays}}">{{icon "manage"}}<span>Feed settings</span></button>{{end}}
+    {{template "feed-attrs" .}}>{{icon "manage"}}<span>Feed settings</span></button>{{end}}
 </div>
 {{end}}
 {{if .Feed}}{{template "feed-dialog" .Categories}}{{end}}

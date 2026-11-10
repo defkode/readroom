@@ -132,89 +132,55 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
-	var in map[string]json.RawMessage
-	if !readJSON(w, r, &in) {
+	// Only the fields present are changed; a field the API does not know is an error.
+	var in struct {
+		URL           *string         `json:"url"`
+		Title         *string         `json:"title"`
+		Category      *string         `json:"category"`
+		Preserve      *bool           `json:"preserve"`
+		PreserveSince json.RawMessage `json:"preserve_since"` // absent, null (no date) or a date
+		AISummary     *bool           `json:"ai_summary"`
+		KeepDays      *int            `json:"keep_days"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
-	var p store.FeedPatch
-	bad := func(field string) { writeError(w, http.StatusBadRequest, "invalid value for "+field) }
-	for field, raw := range in {
-		switch field {
-		case "url":
-			var v string
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			u, ok := validFeedURL(v)
-			if !ok {
-				bad(field)
-				return
-			}
-			// A corrected address is checked like a new one, and may be a page that leads to the feed.
-			if current, err := s.Store.Feed(r.Context(), pathID(r, "id")); err == nil && current.URL != u {
-				if u, err = s.Fetcher.Probe(r.Context(), u); err != nil {
-					writeError(w, http.StatusUnprocessableEntity, addFeedError(err))
-					return
-				}
-			}
-			p.URL = &u
-		case "title":
-			var v string
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			p.Title = &v
-		case "category":
-			var v string
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			p.Category = &v
-		case "preserve":
-			var v bool
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			p.Preserve = &v
-		case "ai_summary":
-			var v bool
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			p.AISummary = &v
-		case "keep_days":
-			var v int
-			if json.Unmarshal(raw, &v) != nil || !validKeepDays(v) {
-				writeError(w, http.StatusBadRequest, keepDaysRule)
-				return
-			}
-			p.KeepDays = &v
-		case "preserve_since":
-			var v *string
-			if json.Unmarshal(raw, &v) != nil {
-				bad(field)
-				return
-			}
-			var since *string
-			if v != nil {
-				var err error
-				if since, err = parseSince(*v); err != nil {
-					writeError(w, http.StatusBadRequest, err.Error())
-					return
-				}
-			}
-			p.PreserveSince = &since
-		default:
-			writeError(w, http.StatusBadRequest, "unknown field "+field)
+	id := pathID(r, "id")
+	p := store.FeedPatch{Title: in.Title, Category: in.Category, Preserve: in.Preserve, AISummary: in.AISummary, KeepDays: in.KeepDays}
+	if in.URL != nil {
+		u, ok := validFeedURL(*in.URL)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid value for url")
 			return
 		}
+		// A corrected address is checked like a new one, and may be a page that leads to the feed.
+		if current, err := s.Store.Feed(r.Context(), id); err == nil && current.URL != u {
+			if u, err = s.Fetcher.Probe(r.Context(), u); err != nil {
+				writeError(w, http.StatusUnprocessableEntity, addFeedError(err))
+				return
+			}
+		}
+		p.URL = &u
 	}
-	id := pathID(r, "id")
+	if in.KeepDays != nil && !validKeepDays(*in.KeepDays) {
+		writeError(w, http.StatusBadRequest, keepDaysRule)
+		return
+	}
+	if in.PreserveSince != nil {
+		var given, since *string
+		err := json.Unmarshal(in.PreserveSince, &given)
+		if err == nil && given != nil {
+			since, err = parseSince(*given)
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid value for preserve_since: "+err.Error())
+			return
+		}
+		p.PreserveSince = &since
+	}
 	if err := s.Store.UpdateFeed(r.Context(), id, p); err != nil {
 		s.fail(w, err)
 		return

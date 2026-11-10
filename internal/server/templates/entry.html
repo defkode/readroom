@@ -45,17 +45,7 @@
   </nav>
 </article>
 
-<dialog id="lists-dialog" class="sheet">
-  <h2>Readlists</h2>
-  <ul class="list checks" id="list-checks">
-    {{range .Lists}}<li><label><input type="checkbox" data-action="toggle-list" data-list="{{.ID}}" data-id="{{$.Page.Entry.ID}}"{{if .Member}} checked{{end}}><span>{{.Name}}</span></label></li>{{end}}
-  </ul>
-  <form class="row" data-action="create-list" data-id="{{.Entry.ID}}">
-    <input name="name" placeholder="New readlist" required autocomplete="off">
-    <button class="btn">Add</button>
-  </form>
-  <form method="dialog"><button class="btn quiet wide">Done</button></form>
-</dialog>
+{{template "lists-dialog" .Lists}}
 
 <dialog id="export-dialog" class="sheet">
   <h2>Export article</h2>
