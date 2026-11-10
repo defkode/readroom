@@ -132,6 +132,30 @@ ALTER TABLE feeds ADD COLUMN initial_unread TEXT NOT NULL DEFAULT '';
 -- Whether the feed sends only a teaser of each article: NULL until an article's page has been compared.
 ALTER TABLE feeds ADD COLUMN teaser INTEGER;
 `,
+	`
+-- Article HTML moves out of the entries table. Lists, counts and searches read only
+-- entries; with the text in the same row, every one of them had to step over it.
+CREATE TABLE entry_bodies (
+	entry_id          INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+	content           TEXT NOT NULL DEFAULT '', -- HTML as the feed sent it
+	preserved_content TEXT                      -- the full local copy, if one was kept
+);
+INSERT INTO entry_bodies (entry_id, content, preserved_content) SELECT id, content, preserved_content FROM entries;
+ALTER TABLE entries DROP COLUMN content;
+ALTER TABLE entries DROP COLUMN preserved_content;
+
+-- Indexes for the lists that are actually shown. Unread is what is opened most and,
+-- over time, the smallest part of the table: its indexes hold unread rows only.
+DROP INDEX entries_arrival;
+CREATE INDEX entries_unread ON entries (created_at DESC, published_at DESC, id DESC)
+	WHERE read = 0 AND hidden_at IS NULL;
+CREATE INDEX entries_feed_unread ON entries (feed_id, created_at DESC, published_at DESC, id DESC)
+	WHERE read = 0 AND hidden_at IS NULL;
+CREATE INDEX entries_starred ON entries (published_at DESC, id DESC) WHERE starred = 1;
+-- "Is this entry in a readlist?" for every row of a list, and "is this image still used?".
+CREATE INDEX readlist_entries_entry ON readlist_entries (entry_id);
+CREATE INDEX entry_assets_sha ON entry_assets (sha256);
+`,
 }
 
 func Open(path string) (*Store, error) {
@@ -140,6 +164,8 @@ func Open(path string) (*Store, error) {
 	q.Add("_pragma", "busy_timeout(10000)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Add("_pragma", "temp_store(MEMORY)")
+	q.Add("_pragma", "cache_size(-16000)") // 16 MB of pages per connection
 	q.Add("_txlock", "immediate")
 	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
 	if err != nil {
@@ -157,7 +183,11 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+// Close lets SQLite refresh its query-planner statistics, then closes the database.
+func (s *Store) Close() error {
+	s.db.Exec(`PRAGMA optimize`)
+	return s.db.Close()
+}
 
 func (s *Store) migrate() error {
 	var v int
@@ -179,6 +209,16 @@ func (s *Store) migrate() error {
 		}
 		if err := tx.Commit(); err != nil {
 			return err
+		}
+	}
+	if v < len(migrations) {
+		// Rare, so worth doing properly: give back the space a migration freed and
+		// gather the statistics the query planner chooses indexes by.
+		if _, err := s.db.Exec(`VACUUM`); err != nil {
+			return fmt.Errorf("vacuum: %w", err)
+		}
+		if _, err := s.db.Exec(`ANALYZE`); err != nil {
+			return fmt.Errorf("analyze: %w", err)
 		}
 	}
 	return nil

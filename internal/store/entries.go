@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -127,11 +128,12 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 	if f.ReadlistID != 0 {
 		add("e.id IN (SELECT entry_id FROM readlist_entries WHERE readlist_id = ?)", f.ReadlistID)
 	}
+	// Written into the query rather than bound, so the planner can match the partial indexes.
 	if f.Read != nil {
-		add("e.read = ?", b2i(*f.Read))
+		add(fmt.Sprintf("e.read = %d", b2i(*f.Read)))
 	}
 	if f.Starred != nil {
-		add("e.starred = ?", b2i(*f.Starred))
+		add(fmt.Sprintf("e.starred = %d", b2i(*f.Starred)))
 	}
 	if f.Preserved != nil {
 		if *f.Preserved {
@@ -219,8 +221,8 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 
 // Entry loads one entry with its content and readlist memberships.
 func (s *Store) Entry(ctx context.Context, id int64) (*Entry, error) {
-	e, err := scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
-FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE e.id = ?`, id), true)
+	e, err := scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id WHERE e.id = ?`, id), true)
 	if err != nil {
 		return nil, err
 	}
@@ -262,12 +264,18 @@ func (s *Store) AddEntries(ctx context.Context, feedID int64, items []NewEntry) 
 		return 0, err
 	}
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO entries (feed_id, guid, url, title, author, published_at, content, excerpt, image, text_length, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
+INSERT INTO entries (feed_id, guid, url, title, author, published_at, excerpt, image, text_length, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
+	// The article's HTML lives apart from its row, so lists never read it.
+	body, err := tx.PrepareContext(ctx, `INSERT INTO entry_bodies (entry_id, content) VALUES (?, ?)`)
+	if err != nil {
+		return 0, err
+	}
+	defer body.Close()
 	now, added := Now(), 0
 	for _, it := range items {
 		keptLocally := preserve && (since == nil || it.PublishedAt >= *since)
@@ -278,13 +286,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`
 		if it.Excerpt != "" {
 			excerpt = it.Excerpt
 		}
-		res, err := stmt.ExecContext(ctx, feedID, it.GUID, it.URL, it.Title, it.Author, it.PublishedAt, it.Content,
+		res, err := stmt.ExecContext(ctx, feedID, it.GUID, it.URL, it.Title, it.Author, it.PublishedAt,
 			excerpt, image, length, now)
 		if err != nil {
 			return 0, err
 		}
 		n, _ := res.RowsAffected()
 		added += int(n)
+		if n == 1 {
+			id, _ := res.LastInsertId()
+			if _, err := body.ExecContext(ctx, id, it.Content); err != nil {
+				return 0, err
+			}
+		}
 		if n == 0 && it.Excerpt != "" {
 			// Already stored: adopt the feed's teaser if we only had our own lead
 			// (entries saved before teasers were kept), or if the feed changed it.
@@ -528,8 +542,8 @@ func (s *Store) PendingSummaries(ctx context.Context, minChars int, feedID int64
 		`SELECT count(*) FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
-FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+where+`
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id WHERE `+where+`
 ORDER BY e.published_at DESC, e.id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
@@ -550,7 +564,9 @@ ORDER BY e.published_at DESC, e.id DESC LIMIT ?`, append(args, limit)...)
 // before those columns existed, or after the way they are derived changed.
 func (s *Store) backfillText() error {
 	for {
-		rows, err := s.db.Query(`SELECT id, title, content, preserved_content, excerpt FROM entries WHERE text_length < 0 LIMIT 200`)
+		rows, err := s.db.Query(`
+SELECT e.id, e.title, b.content, b.preserved_content, e.excerpt
+FROM entries e JOIN entry_bodies b ON b.entry_id = e.id WHERE e.text_length < 0 LIMIT 200`)
 		if err != nil {
 			return err
 		}
@@ -617,8 +633,8 @@ func (s *Store) RequestPreserve(ctx context.Context, id int64) error {
 // PendingPreserve returns entries that should have a local copy but don't yet:
 // explicitly requested ones, plus those covered by their feed's preserve setting.
 func (s *Store) PendingPreserve(ctx context.Context, limit int) ([]*Entry, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
-FROM entries e JOIN feeds f ON f.id = e.feed_id
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id
 WHERE e.preserved_at IS NULL AND e.preserve_attempts < ?
   AND (e.preserve_requested = 1
        OR (e.hidden_at IS NULL AND f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since)))
@@ -665,10 +681,13 @@ func (s *Store) SavePreserved(ctx context.Context, id int64, html string, assets
 			return err
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE entry_bodies SET preserved_content = ? WHERE entry_id = ?`, html, id); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
-UPDATE entries SET preserved_content = ?, preserved_at = ?, preserve_requested = 0, preserve_error = '',
+UPDATE entries SET preserved_at = ?, preserve_requested = 0, preserve_error = '',
        text_length = ?, image = CASE WHEN image != '' AND ? != '' THEN ? ELSE image END
-WHERE id = ?`, html, Now(), utf8.RuneCountInString(htmlx.Flat(html)), localImage, localImage, id); err != nil {
+WHERE id = ?`, Now(), utf8.RuneCountInString(htmlx.Flat(html)), localImage, localImage, id); err != nil {
 		return err
 	}
 	return tx.Commit()

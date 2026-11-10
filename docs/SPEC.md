@@ -56,18 +56,28 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
 
 - **feeds** — `url` (unique), `site_url`, `feed_title` (from the feed), `custom_title` (the owner's
   rename; empty = use the feed's), `category` (free text), `preserve`, `preserve_since`, `ai_summary`,
-  HTTP validators (`etag`, `last_modified`), `last_fetched_at`, `last_error`.
-- **entries** — `feed_id`, `guid` (unique per feed), `url`, `title`, `author`, `published_at`,
-  `content` (sanitised HTML from the feed), `preserved_content` + `preserved_at` (the local full copy),
+  `keep_days`, `initial_unread` (backlog policy for the first fetch), `teaser` (whether it sends only
+  teasers; unknown until checked), HTTP validators (`etag`, `last_modified`), `last_fetched_at`, and
+  health (`last_error`, `fail_count`, `failing_since`, `last_ok_at`).
+- **entries** — everything about an article except its text: `feed_id`, `guid` (unique per feed),
+  `url`, `title`, `author`, `published_at`, `created_at` (when it arrived here), `preserved_at` and
   preservation bookkeeping (`preserve_requested`, `preserve_attempts`, `preserve_error`), `excerpt`,
   `image` (thumbnail of a picture-only entry), `text_length`, `summary` + `summary_model` (written by a
-  model through the API), `read`, `starred`, `hidden_at`.
+  model through the API), `read` + `read_at`, `starred`, `hidden_at`.
+- **entry_bodies** — one row per entry with its HTML: `content` (sanitised, as the feed sent it) and
+  `preserved_content` (the local full copy). Kept apart so that lists, counts and searches, which
+  read only **entries**, never touch article text.
 - **assets** / **entry_assets** — preserved images as blobs, keyed by SHA-256, linked to the entries
   that use them.
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
 
 Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Deleting a
 feed deletes its entries and any images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
+
+Indexes follow the lists that are shown: by publication date overall and per feed; partial indexes
+over unread, visible entries in arrival order (overall and per feed), which also answer the sidebar's
+unread counts; a partial index over starred entries; and lookups from an entry to its readlists and
+from an image to its entries. After a migration the database is vacuumed and analysed.
 
 ## 4. Behaviour
 
@@ -276,6 +286,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Unwanted articles are hidden, not deleted, and hiding touches nothing else | a deleted article would come back as new on the next fetch; leaving its star and readlists alone makes "Show again" an exact undo |
 | Unread is ordered by arrival, not publication, and a new feed brings only its recent articles as unread | in publication order a new feed's backlog was scattered deep in the list and missed; in arrival order a whole backlog would push everything else down |
 | Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
+| Article text lives in its own table, and the Unread indexes hold unread rows only | every list had to step over each article's HTML to read its flags; and over time nearly everything is read, so an index of what is not stays small |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -287,7 +298,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `27c0c7a`. Later commits have only run locally
+- The NAS was updated on 2026-11-10 to the code at commit `7f057d3`. Later commits have only run locally
   until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing

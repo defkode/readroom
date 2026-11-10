@@ -83,8 +83,8 @@ func (s *Store) RemoveFromReadlist(ctx context.Context, listID, entryID int64) e
 
 // ReadlistEntries loads the full entries of a list, in the order they were added.
 func (s *Store) ReadlistEntries(ctx context.Context, listID int64) ([]*Entry, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
-FROM readlist_entries re JOIN entries e ON e.id = re.entry_id JOIN feeds f ON f.id = e.feed_id
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+FROM readlist_entries re JOIN entries e ON e.id = re.entry_id JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id
 WHERE re.readlist_id = ? AND e.hidden_at IS NULL ORDER BY re.added_at, e.id`, listID)
 	if err != nil {
 		return nil, err
