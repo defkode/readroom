@@ -40,6 +40,7 @@ type Fetcher struct {
 
 	client *http.Client
 	mu     sync.Mutex // one refresh/preserve pass at a time
+	pruned time.Time  // when expired articles were last deleted
 }
 
 func New(st *store.Store, interval time.Duration, log *slog.Logger) *Fetcher {
@@ -76,6 +77,15 @@ func (f *Fetcher) Pass(ctx context.Context) {
 		f.refresh(ctx, feed)
 	}
 	f.preservePending(ctx, 25)
+	// Expiry is counted in days, so an hourly sweep is plenty.
+	if time.Since(f.pruned) >= time.Hour {
+		f.pruned = time.Now()
+		if n, err := f.Store.PruneExpired(ctx); err != nil {
+			f.Log.Error("delete expired articles", "err", err)
+		} else if n > 0 {
+			f.Log.Info("deleted expired articles", "count", n)
+		}
+	}
 }
 
 // Refresh fetches one feed now and preserves whatever that makes pending.

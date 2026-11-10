@@ -8,7 +8,7 @@
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
-<article class="article">
+<article class="article" data-id="{{.Entry.ID}}">
   {{with .Entry}}
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
@@ -23,6 +23,11 @@
   </section>
   {{end}}
   <div class="content">{{html .Entry.Body}}</div>
+  {{/* Filled in by the script from the list this article was opened from. */}}
+  <nav class="neighbours" aria-label="Articles in this list" hidden>
+    <a class="prev" rel="prev" hidden><small>Previous</small><span></span></a>
+    <a class="next" rel="next" hidden><small>Next</small><span></span></a>
+  </nav>
   <footer>
     {{if .Entry.PreserveError}}<p class="hint">Local copy failed: {{.Entry.PreserveError}}</p>{{end}}
     <button class="btn quiet" data-action="mark-unread" data-id="{{.Entry.ID}}">Mark as unread</button>

@@ -129,7 +129,7 @@ func TestFeedLifecycle(t *testing.T) {
 
 	// Adding a feed fetches it immediately.
 	var feed store.Feed
-	resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "category": "Tech"}, &feed)
+	resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "category": "Tech", "keep_days": 0}, &feed)
 	if resp.StatusCode != http.StatusCreated || feed.Title != "Origin Blog" || feed.Total != 2 || feed.Category != "Tech" {
 		t.Fatalf("create feed: status %d, feed %+v", resp.StatusCode, feed)
 	}
@@ -245,6 +245,17 @@ func TestFeedLifecycle(t *testing.T) {
 	if e.Summary != "A greeting." || !e.Read || !e.Starred {
 		t.Fatalf("patch entry: %+v", e)
 	}
+	// How long a feed keeps its articles is a setting; the test feed keeps them forever.
+	var kept store.Feed
+	a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": 3650}, &kept)
+	if kept.KeepDays != 3650 {
+		t.Fatalf("keep_days after PATCH: %d", kept.KeepDays)
+	}
+	if resp := a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": -1}, nil); resp.StatusCode != 400 {
+		t.Fatalf("negative keep_days: got %d, want 400", resp.StatusCode)
+	}
+	a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": 0}, &kept)
+
 	// Marking "this and older" touches only unread articles from that one down, and can be undone.
 	var marked struct {
 		Marked int     `json:"marked"`

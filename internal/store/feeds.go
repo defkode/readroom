@@ -19,6 +19,7 @@ type Feed struct {
 	Preserve      bool    `json:"preserve"`       // keep a full local copy of new articles
 	PreserveSince *string `json:"preserve_since"` // only articles published at/after this; null = all
 	AISummary     bool    `json:"ai_summary"`     // queue this feed's longer articles for an AI summary
+	KeepDays      int     `json:"keep_days"`      // delete articles older than this many days; 0 = keep forever
 	ETag          string  `json:"-"`
 	LastModified  string  `json:"-"`
 	LastFetchedAt *string `json:"last_fetched_at"`
@@ -30,7 +31,7 @@ type Feed struct {
 
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
-       f.preserve_since, f.ai_summary, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
+       f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id)
 FROM feeds f`
@@ -38,7 +39,7 @@ FROM feeds f`
 func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
-		&f.PreserveSince, &f.AISummary, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
+		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
 		&f.Unread, &f.Total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -98,12 +99,15 @@ func (s *Store) FeedsDue(ctx context.Context, olderThan time.Duration) ([]*Feed,
 	return feeds, rows.Err()
 }
 
+// DefaultKeepDays is how long a new feed's articles are kept unless it says otherwise.
+const DefaultKeepDays = 365
+
 // CreateFeed adds a feed, or returns the existing one with the same URL.
 func (s *Store) CreateFeed(ctx context.Context, f *Feed) (*Feed, bool, error) {
 	res, err := s.db.ExecContext(ctx, `
-INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
-		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), Now())
+INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, keep_days, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
+		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), f.KeepDays, Now())
 	if err != nil {
 		return nil, false, err
 	}
@@ -124,6 +128,7 @@ type FeedPatch struct {
 	Preserve      *bool
 	PreserveSince **string // pointer to nil clears the date
 	AISummary     *bool
+	KeepDays      *int // 0 = keep forever
 }
 
 func (s *Store) UpdateFeed(ctx context.Context, id int64, p FeedPatch) error {
@@ -153,6 +158,10 @@ func (s *Store) UpdateFeed(ctx context.Context, id int64, p FeedPatch) error {
 	if p.AISummary != nil {
 		set = append(set, "ai_summary = ?")
 		args = append(args, b2i(*p.AISummary))
+	}
+	if p.KeepDays != nil {
+		set = append(set, "keep_days = ?")
+		args = append(args, *p.KeepDays)
 	}
 	if len(set) == 0 {
 		_, err := s.Feed(ctx, id)

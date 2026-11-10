@@ -102,6 +102,10 @@ ALTER TABLE entries ADD COLUMN image TEXT NOT NULL DEFAULT '';
 -- Excerpts are now built from the first real paragraph: recompute them all.
 UPDATE entries SET excerpt = '', text_length = -1;
 `,
+	`
+-- Articles older than this many days are deleted (see PruneExpired); 0 keeps them forever.
+ALTER TABLE feeds ADD COLUMN keep_days INTEGER NOT NULL DEFAULT 365;
+`,
 }
 
 func Open(path string) (*Store, error) {

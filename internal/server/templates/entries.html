@@ -29,7 +29,7 @@
   {{if .CanMark}}<button role="menuitem" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if not .Unread}} disabled{{end}}>{{icon "checks"}}<span>{{if .Unread}}Mark all {{.Unread}} as read{{else}}Nothing unread here{{end}}</span></button>{{end}}
   {{with .Feed}}<button role="menuitem" data-action="edit-feed"
     data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
-    data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}">{{icon "manage"}}<span>Feed settings</span></button>{{end}}
+    data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}" data-ai="{{.AISummary}}" data-keep="{{.KeepDays}}">{{icon "manage"}}<span>Feed settings</span></button>{{end}}
 </div>
 {{end}}
 {{if .Feed}}{{template "feed-dialog" .Categories}}{{end}}

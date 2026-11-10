@@ -249,10 +249,10 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .btn.wide { width: 100%; }
 .btn:active { opacity: .7; }
 .btn[disabled] { opacity: .5; }
-input:not([type=checkbox]):not([type=file]):not([type=search]) {
-  width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--sep); border-radius: 10px; background: var(--surface); outline: none;
+input:not([type=checkbox]):not([type=file]):not([type=search]), select {
+  width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--sep); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-weight: 400; outline: none;
 }
-input:not([type=checkbox]):focus { border-color: var(--accent); }
+input:not([type=checkbox]):focus, select:focus { border-color: var(--accent); }
 .card { margin: 4px 0 6px; padding: 10px; border-radius: var(--radius); background: var(--surface); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .row input { flex: 1 1 160px; }
@@ -340,6 +340,13 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .content td, .content th { padding: 6px 10px; border: 1px solid var(--sep); }
 .content hr { border: 0; border-top: 1px solid var(--sep); margin: 2em 0; }
 .content iframe { max-width: 100%; }
+.neighbours { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 36px; }
+.neighbours a { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 12px 14px; border: 1px solid var(--sep); border-radius: var(--radius); }
+.neighbours a:hover, .neighbours a:active { background: var(--surface-2); }
+.neighbours .next { grid-column: 2; text-align: right; }
+.neighbours small { font-size: .74rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.neighbours span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .92rem; font-weight: 600; line-height: 1.3; }
+.neighbours + footer { margin-top: 24px; }
 .article footer { display: grid; justify-items: start; gap: 10px; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--sep); }
 
 /* ---- login -------------------------------------------------------------- */
@@ -348,6 +355,14 @@ body.bare .main { display: grid; place-items: center; padding: 24px; }
 .login { display: grid; justify-items: center; gap: 14px; width: min(320px, 100%); }
 .login img { border-radius: 18px; box-shadow: var(--shadow); }
 .login h2 { font-size: 1.5rem; letter-spacing: -.02em; }
+
+/* ---- keyboard: the selected row, and the list of shortcuts ---------------- */
+.entry.cursor { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); box-shadow: inset 3px 0 0 var(--accent), inset 0 .5px 0 var(--sep); }
+.keys h3 { margin-top: 18px; font-size: .78rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.keys dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; align-items: center; margin-top: 8px; }
+.keys dt { min-width: 5.6em; white-space: nowrap; }
+.keys dd { margin: 0; }
+kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px solid var(--sep); border-bottom-width: 2px; border-radius: 6px; background: var(--surface); font: 600 .82rem/1.3 ui-monospace, Menlo, Consolas, monospace; text-align: center; }
 
 /* ---- toast -------------------------------------------------------------- */
 #toast {

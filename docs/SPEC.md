@@ -66,8 +66,8 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
   that use them.
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
 
-Entries are never deleted when they drop out of a feed. Deleting a feed deletes its entries and any
-images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
+Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Deleting a
+feed deletes its entries and any images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
 
 ## 4. Behaviour
 
@@ -77,7 +77,17 @@ images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), so
 - Each feed is polled every `READROOM_INTERVAL` (default 30 minutes) using conditional requests; a
   background pass runs every minute and handles whatever is due.
 - Per feed, the owner can set: **name**, **category**, **keep local copies** with an optional
-  **since** date, and **AI summary**.
+  **since** date, **keep articles for** (30 days to 2 years, or forever; one year by default), and
+  **AI summary**.
+
+### Retention ("keep articles for")
+
+- Each feed keeps its articles for `keep_days` days, counted from publication; 0 keeps them forever.
+  Expired articles are deleted hourly, and at once when the setting is saved.
+- Never deleted: starred articles, articles in a readlist, and articles with a local copy (made,
+  requested, or due under the feed's "keep local copies" setting). Being unread does not protect one.
+- A fetch skips items that would be deleted again, so a feed that still lists old articles does not
+  bring them back as unread. A newly added feed therefore starts with at most the last `keep_days` days.
 - OPML import and export; categories map to OPML folders.
 
 ### Preservation ("keep local copies")
@@ -134,6 +144,10 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
   current feed or category (or everything), are not offered in a readlist, in Starred or in search
   results, and can be undone from the message that follows for a few seconds.
+- An article ends with links to the previous and next article of the list it was opened from (the
+  list as it was shown, further pages included), and going back returns to that list.
+- Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `/` search) and in an
+  article (`j`/`k` next and previous, `u` back, `m` unread, `s` star, `v` original); `?` lists them.
 - Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
 - Search matches the title, the AI summary and the excerpt (substring, not full text).
 
@@ -210,6 +224,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Excerpt from the feed's teaser, else the first real paragraph, else the image caption | every article shows something useful without waiting for a model |
 | Bulk "mark as read" is a labelled menu item with Undo, not a bare icon with a confirmation | a lone check mark did not say it meant everything; confirmations get clicked through, undo actually recovers a slip |
 | "Mark this and older as read" instead of checkboxes for partial marking | one tap closes the rest of a list once nothing below is of interest; multi-select is fiddly on a phone |
+| Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
+| Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |

@@ -34,6 +34,7 @@
   <symbol id="i-archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></g></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
@@ -53,6 +54,7 @@
     <a role="menuitem" href="/feeds">{{icon "rss"}}<span>Manage feeds</span></a>
     <a role="menuitem" href="/readlists">{{icon "lists"}}<span>Manage readlists</span></a>
     <button role="menuitem" data-action="open-dialog" data-dialog="prefs-dialog">{{icon "type"}}<span>Display</span></button>
+    <button role="menuitem" data-action="open-dialog" data-dialog="keys-dialog">{{icon "keyboard"}}<span>Keyboard shortcuts</span></button>
   </div>
   {{template "nav" .}}
   {{if .Auth}}<form class="signout" method="post" action="/logout"><button>{{icon "logout"}}<span>Sign out</span></button></form>{{end}}
@@ -79,6 +81,32 @@
 </nav>
 {{end}}
 {{if ne .Tab "login"}}
+<dialog id="keys-dialog" class="sheet keys">
+  <h2>Keyboard shortcuts</h2>
+  <h3>In a list</h3>
+  <dl>
+    <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous article</dd>
+    <dt><kbd>Enter</kbd> <kbd>o</kbd></dt><dd>Open the selected article</dd>
+    <dt><kbd>m</kbd></dt><dd>Mark as read / unread</dd>
+    <dt><kbd>s</kbd></dt><dd>Star / remove star</dd>
+    <dt><kbd>/</kbd></dt><dd>Search</dd>
+  </dl>
+  <h3>In an article</h3>
+  <dl>
+    <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous article in the list</dd>
+    <dt><kbd>u</kbd> <kbd>Esc</kbd></dt><dd>Back to the list</dd>
+    <dt><kbd>m</kbd></dt><dd>Mark as unread and go back</dd>
+    <dt><kbd>s</kbd></dt><dd>Star / remove star</dd>
+    <dt><kbd>v</kbd></dt><dd>Open the original</dd>
+  </dl>
+  <h3>Anywhere</h3>
+  <dl>
+    <dt><kbd>?</kbd></dt><dd>Show this list</dd>
+  </dl>
+  <div class="buttons">
+    <button class="btn" type="button" data-action="close-dialog" autofocus>Done</button>
+  </div>
+</dialog>
 <dialog id="prefs-dialog" class="sheet prefs">
   <h2>Display</h2>
   <fieldset>
@@ -185,6 +213,16 @@
     <label>Category<input name="category" list="categories" autocomplete="off" placeholder="None"></label>
     <label class="switch"><span>Keep local copies<small>Store each article's full text and images, so it survives if the original disappears</small></span><input type="checkbox" name="preserve"></label>
     <label class="since">Only articles published since<input type="date" name="since"><small>Leave empty to keep every article, including older ones already in the feed</small></label>
+    <label>Keep articles for
+      <select name="keep">
+        <option value="30">30 days</option>
+        <option value="90">3 months</option>
+        <option value="180">6 months</option>
+        <option value="365">1 year</option>
+        <option value="730">2 years</option>
+        <option value="0">Forever</option>
+      </select>
+      <small>Older articles are deleted. Starred articles, those in a readlist and those with a local copy are always kept</small></label>
     <label class="switch"><span>AI summary<small>Queue this feed's longer articles for a summary written by your model. Until one arrives, the feed's own teaser is shown</small></span><input type="checkbox" name="ai"></label>
     <div class="buttons">
       <button class="btn" value="save">Save</button>

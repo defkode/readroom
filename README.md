@@ -39,8 +39,8 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 
 | | |
 |---|---|
-| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?}` |
-| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary` |
+| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, keep_days?}` |
+| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary`, `keep_days` (default 365; `0` keeps articles forever) |
 | `POST /feeds/{id}/refresh` | fetch now |
 | `GET /entries` | filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc`, `limit`; page with `before=<next>` |
 | `GET /entries/{id}` | includes `content` and `preserved_content` |

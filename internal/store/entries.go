@@ -195,6 +195,15 @@ func (s *Store) AddEntries(ctx context.Context, feedID int64, items []NewEntry) 
 		return 0, err
 	}
 	defer tx.Rollback()
+	// Leave out what PruneExpired would delete again, or a feed that still lists
+	// old articles would bring them back as unread on every fetch.
+	var expired, preserve bool
+	var cutoff string
+	var since *string
+	if err := tx.QueryRowContext(ctx, `SELECT keep_days > 0, `+expiryCutoff+`, preserve, preserve_since FROM feeds f WHERE id = ?`,
+		feedID).Scan(&expired, &cutoff, &preserve, &since); err != nil {
+		return 0, err
+	}
 	stmt, err := tx.PrepareContext(ctx, `
 INSERT INTO entries (feed_id, guid, url, title, author, published_at, content, excerpt, image, text_length, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
@@ -204,6 +213,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`
 	defer stmt.Close()
 	now, added := Now(), 0
 	for _, it := range items {
+		keptLocally := preserve && (since == nil || it.PublishedAt >= *since)
+		if expired && it.PublishedAt < cutoff && !keptLocally {
+			continue
+		}
 		excerpt, image, length := derive(it.Title, it.Content)
 		if it.Excerpt != "" {
 			excerpt = it.Excerpt
@@ -323,6 +336,28 @@ func (s *Store) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
 	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE entries SET read = 0 WHERE read = 1 AND id IN (SELECT value FROM json_each(?))`, string(list))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// --- retention --------------------------------------------------------------
+
+// expiryCutoff is the publication time before which feed f's articles have expired.
+const expiryCutoff = `strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-' || f.keep_days || ' days')`
+
+// PruneExpired deletes articles older than their feed's keep_days. Anything the
+// owner has singled out stays: starred articles, those in a readlist, and those
+// with a local copy made, requested or due under the feed's preserve setting.
+func (s *Store) PruneExpired(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+DELETE FROM entries WHERE id IN (
+	SELECT e.id FROM entries e JOIN feeds f ON f.id = e.feed_id
+	WHERE f.keep_days > 0 AND e.published_at < `+expiryCutoff+`
+	  AND e.starred = 0 AND e.preserved_at IS NULL AND e.preserve_requested = 0
+	  AND NOT (f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since))
+	  AND e.id NOT IN (SELECT entry_id FROM readlist_entries))`)
 	if err != nil {
 		return 0, err
 	}

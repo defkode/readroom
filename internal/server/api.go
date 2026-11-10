@@ -57,9 +57,17 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 		Preserve      bool   `json:"preserve"`
 		PreserveSince string `json:"preserve_since"`
 		AISummary     bool   `json:"ai_summary"`
+		KeepDays      *int   `json:"keep_days"`
 	}
 	if !readJSON(w, r, &in) {
 		return
+	}
+	keep := store.DefaultKeepDays
+	if in.KeepDays != nil {
+		if keep = *in.KeepDays; !validKeepDays(keep) {
+			writeError(w, http.StatusBadRequest, keepDaysRule)
+			return
+		}
 	}
 	feedURL, ok := validFeedURL(in.URL)
 	if !ok {
@@ -73,7 +81,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
 		URL: feedURL, CustomTitle: strings.TrimSpace(in.Title), Category: strings.TrimSpace(in.Category),
-		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary,
+		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary, KeepDays: keep,
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -140,6 +148,13 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			p.AISummary = &v
+		case "keep_days":
+			var v int
+			if json.Unmarshal(raw, &v) != nil || !validKeepDays(v) {
+				writeError(w, http.StatusBadRequest, keepDaysRule)
+				return
+			}
+			p.KeepDays = &v
 		case "preserve_since":
 			var v *string
 			if json.Unmarshal(raw, &v) != nil {
@@ -168,8 +183,19 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 	if p.Preserve != nil || p.PreserveSince != nil || p.URL != nil {
 		s.Fetcher.Kick() // new settings may make existing articles due for preservation
 	}
+	if p.KeepDays != nil {
+		// A shorter period applies at once rather than at the next hourly sweep.
+		if _, err := s.Store.PruneExpired(r.Context()); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	s.apiFeed(w, r)
 }
+
+const keepDaysRule = "keep_days must be a number of days from 1 to 36500, or 0 to keep articles forever"
+
+func validKeepDays(n int) bool { return n >= 0 && n <= 36500 }
 
 func (s *Server) apiDeleteFeed(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.DeleteFeed(r.Context(), pathID(r, "id")); err != nil {
@@ -679,7 +705,7 @@ func (s *Server) apiImportOPML(w http.ResponseWriter, r *http.Request) {
 	walk = func(outlines []opmlOutline, category string) {
 		for _, o := range outlines {
 			if feedURL, ok := validFeedURL(o.XMLURL); ok {
-				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category})
+				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, KeepDays: store.DefaultKeepDays})
 				if err == nil && created {
 					added++
 				} else {
