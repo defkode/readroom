@@ -129,7 +129,8 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 - Views: Unread, All, Starred; by feed, by category, by readlist. Opening an article marks it read;
   it can be marked unread again. "Mark all as read" applies to the current feed or category.
-- Readlists: create, rename, delete; add or remove articles.
+- Readlists: create, rename, delete; add or remove articles (from the article, or from the ⋮ menu on each
+  row of the readlist itself).
 - Search matches the title, the AI summary and the excerpt (substring, not full text).
 
 ### Export

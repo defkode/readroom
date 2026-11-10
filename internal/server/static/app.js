@@ -111,6 +111,26 @@ const actions = {
     await api('DELETE', `/feeds/${form.dataset.id}`);
     location.reload();
   },
+  // The row menu is one shared popover, placed under the kebab that opened it.
+  'row-menu'(el) {
+    const menu = document.getElementById('row-menu');
+    menu.querySelectorAll('button').forEach((b) => { b.dataset.id = el.dataset.id; });
+    menu.showPopover();
+    const at = el.getBoundingClientRect();
+    const below = at.bottom + 4 + menu.offsetHeight <= innerHeight - 8;
+    menu.style.top = (below ? at.bottom + 4 : at.top - 4 - menu.offsetHeight) + 'px';
+    menu.style.left = Math.max(8, at.right - menu.offsetWidth) + 'px';
+  },
+  async 'remove-from-list'(el) {
+    el.closest('[popover]').hidePopover();
+    await api('DELETE', `/readlists/${el.dataset.list}/entries/${el.dataset.id}`);
+    document.querySelector(`#entries .entry[data-id="${el.dataset.id}"]`).remove();
+    // Keep the sidebar count in step; an emptied list reloads to show its empty state.
+    if (!document.querySelector('#entries .entry')) return location.reload();
+    const count = document.querySelector(`a[href="/?readlist_id=${el.dataset.list}"] b`);
+    if (count) count.textContent = Math.max(0, count.textContent - 1);
+    toast('Removed from readlist');
+  },
   async 'delete-list'(el) {
     if (!confirm(`Delete readlist "${el.dataset.name}"? Its articles are kept.`)) return;
     await api('DELETE', `/readlists/${el.dataset.id}`);
@@ -200,6 +220,12 @@ document.addEventListener('click', (e) => {
   else readroomPrefs.set({ [name]: button.value });
   syncPrefs();
 });
+
+// A row menu is pinned to the viewport, so it closes rather than drift when the page scrolls.
+addEventListener('scroll', () => {
+  const menu = document.querySelector('.menu:popover-open');
+  if (menu) menu.hidePopover();
+}, { passive: true });
 
 // Close a sheet when its backdrop is tapped.
 document.addEventListener('click', (e) => {

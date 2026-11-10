@@ -17,11 +17,16 @@
 {{else}}
 <p class="empty">{{.Empty}}</p>
 {{end}}
+{{if .ListID}}
+<div id="row-menu" class="menu" popover role="menu">
+  <button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}Remove from readlist</button>
+</div>
+{{end}}
 {{end}}{{end}}
 
 {{define "items"}}
 {{range .Entries}}
-<li class="entry{{if .Read}} read{{end}}">
+<li class="entry{{if .Read}} read{{end}}{{if $.ListID}} hasmenu{{end}}" data-id="{{.ID}}">
   <a href="/entries/{{.ID}}">
     <span class="dot" aria-hidden="true"></span>
     {{if .Image}}<img class="thumb" src="{{.Image}}" alt="" loading="lazy" decoding="async">{{end}}
@@ -33,6 +38,7 @@
       {{if or .Starred .Preserved}}<span class="flags">{{if .Starred}}<span class="starred">{{icon "star"}}</span>{{end}}{{if .Preserved}}{{icon "archive"}}{{end}}</span>{{end}}
     </span>
   </a>
+  {{if $.ListID}}<button class="iconbtn kebab" data-action="row-menu" data-id="{{.ID}}" aria-label="Article actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>{{end}}
 </li>
 {{end}}
 {{if .More}}<li class="more"><button class="btn quiet" data-action="load-more" data-url="{{.More}}">Load more</button></li>{{end}}

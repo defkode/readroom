@@ -156,6 +156,7 @@ type entriesPage struct {
 	Query    string
 	FeedID   int64
 	Category *string
+	ListID   int64 // set in a readlist, where each row offers removal
 	CanMark  bool
 	Empty    string
 }
@@ -229,7 +230,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
-		FeedID: f.FeedID, Category: f.Category, CanMark: f.ReadlistID == 0 && view != "starred", Empty: empty}
+		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, CanMark: f.ReadlistID == 0 && view != "starred", Empty: empty}
 	for k := range scope {
 		page.Hidden[k] = scope.Get(k)
 	}

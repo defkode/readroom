@@ -308,6 +308,10 @@ func TestFeedLifecycle(t *testing.T) {
 			!bytes.Contains(page, []byte("Old excerpt."))) {
 			t.Errorf("GET %s: expected an AI-marked summary and a plain excerpt", path)
 		}
+		// Only a readlist offers to remove its rows.
+		if inList := strings.Contains(path, "readlist_id"); bytes.Contains(page, []byte(`data-action="remove-from-list"`)) != inList {
+			t.Errorf("GET %s: remove-from-readlist button present = %v, want %v", path, !inList, inList)
+		}
 		if resp.StatusCode != 200 || len(page) == 0 || bytes.Contains(page, []byte("template error")) {
 			t.Errorf("GET %s: status %d, %d bytes", path, resp.StatusCode, len(page))
 		}
