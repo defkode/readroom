@@ -122,6 +122,12 @@ UPDATE feeds SET last_ok_at = last_fetched_at WHERE last_error = '';
 -- When the owner hid the entry; hidden entries stay out of every list and count.
 ALTER TABLE entries ADD COLUMN hidden_at TEXT;
 `,
+	`
+-- Unread lists are ordered by when an entry arrived here, so a new feed's articles are not buried.
+CREATE INDEX entries_arrival ON entries (created_at DESC, published_at DESC, id DESC);
+-- How much of a new feed's backlog starts out unread; applied once, by its first successful fetch.
+ALTER TABLE feeds ADD COLUMN initial_unread TEXT NOT NULL DEFAULT '';
+`,
 }
 
 func Open(path string) (*Store, error) {

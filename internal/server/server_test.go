@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -140,7 +141,7 @@ func TestFeedLifecycle(t *testing.T) {
 
 	// Adding a feed fetches it immediately.
 	var feed store.Feed
-	resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "category": "Tech", "keep_days": 0}, &feed)
+	resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "category": "Tech", "keep_days": 0, "unread": "all"}, &feed)
 	if resp.StatusCode != http.StatusCreated || feed.Title != "Origin Blog" || feed.Total != 2 || feed.Category != "Tech" {
 		t.Fatalf("create feed: status %d, feed %+v", resp.StatusCode, feed)
 	}
@@ -275,7 +276,7 @@ func TestFeedLifecycle(t *testing.T) {
 	if resp := a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": -1}, nil); resp.StatusCode != 400 {
 		t.Fatalf("negative keep_days: got %d, want 400", resp.StatusCode)
 	}
-	a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": 0}, &kept)
+	a.call("PATCH", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), map[string]any{"keep_days": 0, "unread": "all"}, &kept)
 
 	// Marking "this and older" touches only unread articles from that one down, and can be undone.
 	var marked struct {
@@ -483,7 +484,7 @@ func TestAddingFeedsIsValidated(t *testing.T) {
 	a, site := newApp(t), origin(t)
 	post := func(address string) (*http.Response, store.Feed) {
 		var feed store.Feed
-		resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": address, "keep_days": 0}, &feed)
+		resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": address, "keep_days": 0, "unread": "all"}, &feed)
 		return resp, feed
 	}
 
@@ -531,7 +532,7 @@ func TestAddingFeedsIsValidated(t *testing.T) {
 func TestHidingEntries(t *testing.T) {
 	a, site := newApp(t), origin(t)
 	var feed store.Feed
-	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0}, &feed)
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0, "unread": "all"}, &feed)
 	var list struct{ Entries []store.Entry }
 	a.call("GET", "/api/v1/entries", nil, &list)
 	if len(list.Entries) != 2 {
@@ -575,5 +576,49 @@ func TestHidingEntries(t *testing.T) {
 	a.call("GET", fmt.Sprintf("/api/v1/readlists/%d", rl.ID), nil, &rl)
 	if e.Hidden || !e.Starred || !e.InReadlist || rl.Count != 1 {
 		t.Errorf("after showing it again: hidden %v starred %v in readlist %v, readlist count %d", e.Hidden, e.Starred, e.InReadlist, rl.Count)
+	}
+}
+
+// A new feed's older articles start out read unless asked otherwise, and the
+// Unread list shows what arrived last first.
+func TestBacklogAndArrivalOrder(t *testing.T) {
+	a, site := newApp(t), origin(t)
+	count := func(policy string) (total, unreadCount int) {
+		body := map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0}
+		if policy != "" {
+			body["unread"] = policy
+		}
+		var feed store.Feed
+		if resp := a.call("POST", "/api/v1/feeds", body, &feed); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("add feed with unread=%q: %d", policy, resp.StatusCode)
+		}
+		defer a.call("DELETE", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), nil, nil)
+		return feed.Total, feed.Unread
+	}
+	// With only two articles every policy but "none" keeps both; the store test covers the cut-offs.
+	for policy, want := range map[string]int{"": 2, "recent": 2, "latest": 2, "all": 2, "none": 0} {
+		if total, got := count(policy); total != 2 || got != want {
+			t.Errorf("unread=%q: %d of %d unread, want %d of 2", policy, got, total, want)
+		}
+	}
+	if resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "unread": "some"}, nil); resp.StatusCode != 400 {
+		t.Errorf("unknown unread policy: got %d, want 400", resp.StatusCode)
+	}
+
+	// Arrival order pages through everything exactly once.
+	var feed store.Feed
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0, "unread": "all"}, &feed)
+	var page struct {
+		Entries []store.Entry
+		Next    string
+	}
+	a.call("GET", "/api/v1/entries?order=arrival&limit=1", nil, &page)
+	if len(page.Entries) != 1 || page.Next == "" {
+		t.Fatalf("first page in arrival order: %d entries, next %q", len(page.Entries), page.Next)
+	}
+	first := page.Entries[0].ID
+	a.call("GET", "/api/v1/entries?order=arrival&limit=1&before="+url.QueryEscape(page.Next), nil, &page)
+	if len(page.Entries) != 1 || page.Entries[0].ID == first {
+		t.Fatalf("second page in arrival order repeats or is empty: %+v", page.Entries)
 	}
 }

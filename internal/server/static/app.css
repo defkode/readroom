@@ -226,6 +226,8 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .entry .meta .mins::before { content: "· "; }
 .entry .meta time { flex: none; margin-left: auto; }
 .entry .meta .flags + time { margin-left: 0; }
+/* With no marks to show, the hidden marks must not keep the date from the right edge. */
+.entry:not(.starred):not(.listed):not(.kept) .meta time { margin-left: auto; }
 .entry .title { font-size: 1.02rem; font-weight: 650; line-height: 1.28; letter-spacing: -.01em; text-wrap: pretty; }
 /* A read title is lighter, not grey: it must still stand apart from the feed name above and the snippet below. */
 .entry.read .title { font-weight: 500; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
@@ -281,7 +283,8 @@ input:not([type=checkbox]):focus, select:focus { border-color: var(--accent); }
 .card { margin: 4px 0 6px; padding: 10px; border-radius: var(--radius); background: var(--surface); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .row input { flex: 1 1 160px; }
-.row input[type=url] { flex: 3 1 240px; }
+.row input[type=url], .row input[name=url] { flex: 3 1 240px; }
+.row select { flex: 1 1 170px; width: auto; }
 
 /* ---- sheets (dialogs) --------------------------------------------------- */
 dialog.sheet {

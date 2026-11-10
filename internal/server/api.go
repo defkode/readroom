@@ -75,8 +75,17 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 		PreserveSince string `json:"preserve_since"`
 		AISummary     bool   `json:"ai_summary"`
 		KeepDays      *int   `json:"keep_days"`
+		Unread        string `json:"unread"` // how much of the backlog starts unread: recent (default), latest, all, none
 	}
 	if !readJSON(w, r, &in) {
+		return
+	}
+	switch in.Unread {
+	case "":
+		in.Unread = store.UnreadRecent
+	case store.UnreadRecent, store.UnreadLatest, store.UnreadAll, store.UnreadNone:
+	default:
+		writeError(w, http.StatusBadRequest, "unread must be recent, latest, all or none")
 		return
 	}
 	keep := store.DefaultKeepDays
@@ -104,7 +113,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
 		URL: feedURL, CustomTitle: strings.TrimSpace(in.Title), Category: strings.TrimSpace(in.Category),
-		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary, KeepDays: keep,
+		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary, KeepDays: keep, InitialUnread: in.Unread,
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -278,7 +287,7 @@ func entryFilter(q url.Values) store.EntryFilter {
 	f := store.EntryFilter{
 		Read: boolParam(q, "read"), Starred: boolParam(q, "starred"), Preserved: boolParam(q, "preserved"),
 		Hidden: q.Get("hidden") == "true",
-		Query:  q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc",
+		Query:  q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc", ByArrival: q.Get("order") == "arrival",
 	}
 	f.FeedID, _ = strconv.ParseInt(q.Get("feed_id"), 10, 64)
 	f.ReadlistID, _ = strconv.ParseInt(q.Get("readlist_id"), 10, 64)
@@ -298,7 +307,9 @@ func entryFilter(q url.Values) store.EntryFilter {
 	return f
 }
 
-func cursor(entries []*store.Entry, limit int) string {
+// cursor is where the next page starts: the last entry's place in the list's order.
+func cursor(entries []*store.Entry, f store.EntryFilter) string {
+	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
@@ -306,7 +317,11 @@ func cursor(entries []*store.Entry, limit int) string {
 		return ""
 	}
 	last := entries[len(entries)-1]
-	return last.PublishedAt + "," + strconv.FormatInt(last.ID, 10)
+	at := last.PublishedAt + "," + strconv.FormatInt(last.ID, 10)
+	if f.ByArrival {
+		at = last.CreatedAt + "," + at
+	}
+	return at
 }
 
 func (s *Server) apiEntries(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +331,7 @@ func (s *Server) apiEntries(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "next": cursor(entries, f.Limit)})
+	writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "next": cursor(entries, f)})
 }
 
 func (s *Server) apiEntry(w http.ResponseWriter, r *http.Request) {
@@ -361,6 +376,7 @@ func (s *Server) apiMarkRead(w http.ResponseWriter, r *http.Request) {
 		FeedID   int64   `json:"feed_id"`
 		Category *string `json:"category"`
 		Through  int64   `json:"through"`
+		Order    string  `json:"order"` // "arrival" when the list "through" was picked from is in arrival order
 	}
 	if r.ContentLength != 0 && !readJSON(w, r, &in) {
 		return
@@ -371,7 +387,7 @@ func (s *Server) apiMarkRead(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ids, err := s.Store.MarkRead(r.Context(), store.ReadScope{FeedID: in.FeedID, Category: in.Category, Through: in.Through})
+	ids, err := s.Store.MarkRead(r.Context(), store.ReadScope{FeedID: in.FeedID, Category: in.Category, Through: in.Through, ByArrival: in.Order == "arrival"})
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -737,7 +753,7 @@ func (s *Server) apiImportOPML(w http.ResponseWriter, r *http.Request) {
 	walk = func(outlines []opmlOutline, category string) {
 		for _, o := range outlines {
 			if feedURL, ok := validFeedURL(o.XMLURL); ok {
-				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, KeepDays: store.DefaultKeepDays})
+				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
 				if err == nil && created {
 					added++
 				} else {

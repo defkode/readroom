@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"readroom/internal/htmlx"
@@ -103,6 +104,7 @@ type EntryFilter struct {
 	Before     string // pagination cursor: "published_at,id" of the last item seen
 	Limit      int
 	Oldest     bool // oldest first instead of newest first
+	ByArrival  bool // order by when the entry arrived here rather than when it was published
 }
 
 // conditions turns the filter's selection (not its paging or order) into SQL.
@@ -173,9 +175,20 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 	if f.Oldest {
 		cmp, order = ">", "ASC"
 	}
-	if pub, idStr, ok := strings.Cut(f.Before, ","); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
-			add("(e.published_at, e.id) "+cmp+" (?, ?)", pub, id)
+	// Publication order by default. Arrival order puts what this reader saw last
+	// first, and within one fetch (a new feed's whole backlog) the newest first.
+	keys := []string{"e.published_at", "e.id"}
+	if f.ByArrival {
+		keys = []string{"e.created_at", "e.published_at", "e.id"}
+	}
+	if parts := strings.Split(f.Before, ","); len(parts) == len(keys) {
+		if id, err := strconv.ParseInt(parts[len(parts)-1], 10, 64); err == nil {
+			vals := make([]any, len(parts))
+			for i, p := range parts[:len(parts)-1] {
+				vals[i] = p
+			}
+			vals[len(parts)-1] = id
+			add("("+strings.Join(keys, ", ")+") "+cmp+" ("+strings.TrimSuffix(strings.Repeat("?, ", len(keys)), ", ")+")", vals...)
 		}
 	}
 	if f.Limit <= 0 || f.Limit > 500 {
@@ -185,7 +198,7 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, " AND ")
 	}
-	q += ` ORDER BY e.published_at ` + order + `, e.id ` + order + ` LIMIT ?`
+	q += ` ORDER BY ` + strings.Join(keys, ` `+order+`, `) + ` ` + order + ` LIMIT ?`
 	args = append(args, f.Limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -338,7 +351,9 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
 type ReadScope struct {
 	FeedID   int64
 	Category *string
-	Through  int64 // when set, only this entry and those older than it
+	Through  int64 // when set, only this entry and those below it in the list
+	// ByArrival says the list Through was picked from is in arrival order.
+	ByArrival bool
 }
 
 func (sc ReadScope) where() (string, []any) {
@@ -353,8 +368,12 @@ func (sc ReadScope) where() (string, []any) {
 		args = append(args, *sc.Category)
 	}
 	if sc.Through != 0 {
-		// The same order lists use: newest first by publication time, then id.
-		q += ` AND (published_at, id) <= (SELECT published_at, id FROM entries WHERE id = ?)`
+		// "This and everything below it", in the order the list is shown in.
+		keys := `published_at, id`
+		if sc.ByArrival {
+			keys = `created_at, published_at, id`
+		}
+		q += ` AND (` + keys + `) <= (SELECT ` + keys + ` FROM entries WHERE id = ?)`
 		args = append(args, sc.Through)
 	}
 	return q, args
@@ -400,6 +419,41 @@ func (s *Store) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// --- a new feed's backlog -----------------------------------------------------
+
+// What part of a new feed's existing articles starts out unread.
+const (
+	UnreadRecent = "recent" // those published in the last RecentDays days, and at least the RecentAtLeast newest
+	UnreadLatest = "latest" // the LatestCount newest
+	UnreadAll    = "all"
+	UnreadNone   = "none"
+
+	RecentDays    = 30
+	RecentAtLeast = 3 // so a blog that has been quiet for a month still shows something
+	LatestCount   = 10
+)
+
+// TrimBacklog marks the part of a feed's articles its policy leaves out as read
+// (without a reading time: nobody read them). It runs once, after the feed's
+// first successful fetch.
+func (s *Store) TrimBacklog(ctx context.Context, feedID int64, policy string) error {
+	var err error
+	switch policy {
+	case UnreadRecent:
+		_, err = s.db.ExecContext(ctx, `
+UPDATE entries SET read = 1 WHERE feed_id = ? AND read = 0 AND published_at < ? AND id NOT IN (
+	SELECT id FROM entries WHERE feed_id = ? ORDER BY published_at DESC, id DESC LIMIT ?)`,
+			feedID, time.Now().UTC().AddDate(0, 0, -RecentDays).Format(TimeFormat), feedID, RecentAtLeast)
+	case UnreadLatest:
+		_, err = s.db.ExecContext(ctx, `
+UPDATE entries SET read = 1 WHERE feed_id = ? AND read = 0 AND id NOT IN (
+	SELECT id FROM entries WHERE feed_id = ? ORDER BY published_at DESC, id DESC LIMIT ?)`, feedID, feedID, LatestCount)
+	case UnreadNone:
+		_, err = s.db.ExecContext(ctx, `UPDATE entries SET read = 1 WHERE feed_id = ? AND read = 0`, feedID)
+	}
+	return err
 }
 
 // --- retention --------------------------------------------------------------

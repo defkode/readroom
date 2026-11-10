@@ -30,6 +30,7 @@ type Feed struct {
 	LatestEntryAt *string `json:"latest_entry_at"` // newest article it has
 	Broken        bool    `json:"broken"`          // has failed often enough to need attention
 	Stale         bool    `json:"stale"`           // answers, but has published nothing for a long time
+	InitialUnread string  `json:"-"`               // backlog policy for the first fetch, see TrimBacklog
 	CreatedAt     string  `json:"created_at"`
 	Unread        int     `json:"unread"`
 	Total         int     `json:"total"`
@@ -38,7 +39,7 @@ type Feed struct {
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
        f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
-       f.fail_count, f.failing_since, f.last_ok_at, (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
+       f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL)
 FROM feeds f`
@@ -47,7 +48,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
 		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
-		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.LatestEntryAt,
+		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.LatestEntryAt,
 		&f.Unread, &f.Total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -138,9 +139,9 @@ const DefaultKeepDays = 365
 // CreateFeed adds a feed, or returns the existing one with the same URL.
 func (s *Store) CreateFeed(ctx context.Context, f *Feed) (*Feed, bool, error) {
 	res, err := s.db.ExecContext(ctx, `
-INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, keep_days, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
-		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), f.KeepDays, Now())
+INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, keep_days, initial_unread, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
+		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), f.KeepDays, f.InitialUnread, Now())
 	if err != nil {
 		return nil, false, err
 	}

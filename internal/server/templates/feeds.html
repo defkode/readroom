@@ -6,6 +6,12 @@
 <form class="card row" data-action="add-feed">
   <input name="url" inputmode="url" placeholder="Feed or site address" required autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Feed or site address">
   <input name="category" placeholder="Category" list="categories" autocomplete="off" aria-label="Category">
+  <select name="unread" aria-label="Which of its existing articles start unread" title="Which of its existing articles start unread">
+    <option value="recent">Unread: last 30 days</option>
+    <option value="latest">Unread: latest 10</option>
+    <option value="all">Unread: everything</option>
+    <option value="none">Unread: nothing</option>
+  </select>
   <button class="btn">{{icon "plus"}} Add feed</button>
 </form>
 

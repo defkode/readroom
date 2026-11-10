@@ -77,6 +77,9 @@ feed deletes its entries and any images no other entry uses. Timestamps are UTC 
   leads to one (a `<link rel="alternate">`, or a feed at a customary path such as `/feed.xml`), so a
   site's home page or an article is enough. Otherwise the form says why. Changing a feed's address is
   checked the same way; OPML import is not, and what fails there shows up as below.
+- Adding a feed says how much of what it already holds starts unread: the last 30 days (the default,
+  and never fewer than the 3 newest), the latest 10, everything, or nothing. The rest arrives already
+  read — in the archive, not in the way. Imported feeds get the default.
 - Each feed is polled every `READROOM_INTERVAL` (default 30 minutes) using conditional requests; a
   background pass runs every minute and handles whatever is due.
 - Per feed, the owner can set: **name**, **category**, **keep local copies** with an optional
@@ -157,7 +160,9 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 ### Reading, organising, searching
 
 - Views: Unread, All, Starred; by feed, by category, by readlist, each tab showing how many articles
-  it holds. Opening an article marks it read and records when (`read_at`); from the second
+  it holds. Unread lists show what arrived in the reader last first (and, within one fetch, the newest
+  first), so a newly added feed's articles sit together at the top instead of being scattered among
+  older ones; All and Starred are an archive, by publication date. Opening an article marks it read and records when (`read_at`); from the second
   visit on, the article shows how long ago that was under its title, next to "Mark as unread".
 - Lists and articles show an estimated reading time (about 1,400 characters a minute, from the best
   text available: the local copy if there is one, else what the feed sent, which may be only a teaser).
@@ -264,6 +269,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | A feed is reported as broken only after 3 failed fetches in a row, on the Unread list rather than only in Manage feeds | one timeout is not news; and the place the owner looks every day is the only place a silent failure gets noticed |
 | Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |
 | Unwanted articles are hidden, not deleted, and hiding touches nothing else | a deleted article would come back as new on the next fetch; leaving its star and readlists alone makes "Show again" an exact undo |
+| Unread is ordered by arrival, not publication, and a new feed brings only its recent articles as unread | in publication order a new feed's backlog was scattered deep in the list and missed; in arrival order a whole backlog would push everything else down |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |

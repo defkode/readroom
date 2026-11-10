@@ -30,7 +30,7 @@
 {{end}}
 <div id="row-menu" class="menu" popover role="menu">
   <button role="menuitem" data-action="row-read">{{icon "check"}}<span>Mark as read</span></button>
-  {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}>{{icon "checks"}}<span>Mark this and older as read</span></button>{{end}}
+  {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if .ByArrival}} data-order="arrival"{{end}}>{{icon "checks"}}<span>{{if .ByArrival}}Mark this and below as read{{else}}Mark this and older as read{{end}}</span></button>{{end}}
   <button role="menuitem" data-action="row-lists">{{icon "lists"}}<span>Add to readlist…</span></button>
   {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
   <button role="menuitem" data-action="row-star">{{icon "star"}}<span>Star</span></button>

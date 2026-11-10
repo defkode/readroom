@@ -118,6 +118,12 @@ func (f *Fetcher) refresh(ctx context.Context, feed *store.Feed) error {
 	if added > 0 {
 		f.Log.Info("feed updated", "feed", feed.URL, "new", added)
 	}
+	if feed.LastOKAt == nil {
+		// The first fetch that worked brought the whole backlog: keep unread only what was asked for.
+		if err := f.Store.TrimBacklog(ctx, feed.ID, feed.InitialUnread); err != nil {
+			f.Log.Error("trim backlog", "feed", feed.URL, "err", err)
+		}
+	}
 	if got.movedTo != "" {
 		f.Log.Info("feed moved for good", "from", feed.URL, "to", got.movedTo)
 	}

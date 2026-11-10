@@ -178,7 +178,11 @@ const actions = {
     }).catch((err) => toast(err.message));
   },
   'mark-all-read'(el) { return markRead(el, {}); },
-  'read-through'(el) { return markRead(el, { through: +el.dataset.id }); },
+  'read-through'(el) {
+    const body = { through: +el.dataset.id };
+    if (el.dataset.order) body.order = el.dataset.order; // "below" in the order this list is shown in
+    return markRead(el, body);
+  },
   'row-hide'(el) {
     const row = rowOf(el);
     closeMenu(el);
@@ -305,7 +309,7 @@ const actions = {
 
 const submits = {
   async 'add-feed'(form) {
-    const feed = await api('POST', '/feeds', { url: form.url.value, category: form.category.value });
+    const feed = await api('POST', '/feeds', { url: form.url.value, category: form.category.value, unread: form.unread.value });
     location.reload();
   },
   async 'save-feed'(form) {

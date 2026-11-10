@@ -255,6 +255,7 @@ type entriesPage struct {
 	Feed       *store.Feed // set when the list is one feed, whose settings can be opened here
 	Notice     bool        // the main Unread list: the place to say that feeds have stopped updating
 	HiddenView bool        // the list of hidden articles, whose rows offer to show them again
+	ByArrival  bool        // the list is in arrival order, which "this and older" must follow
 	Categories []string    // for the feed settings sheet
 	Empty      string
 }
@@ -305,6 +306,9 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	case "unread":
 		unread := false
 		f.Read = &unread
+		// What arrived last comes first, so a newly added feed's articles are not
+		// buried among older ones; the other views are an archive, by publication.
+		f.ByArrival = true
 		empty = "You're all caught up."
 	case "starred":
 		starred := true
@@ -336,7 +340,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
 		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed,
-		Notice: !scoped && view == "unread" && f.Query == "", HiddenView: view == "hidden"}
+		Notice: !scoped && view == "unread" && f.Query == "", HiddenView: view == "hidden", ByArrival: f.ByArrival}
 	if feed != nil && q.Get("partial") == "" {
 		if page.Categories, err = s.Store.Categories(ctx); err != nil {
 			s.webFail(w, err)
@@ -381,7 +385,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		}
 		page.Tabs = append(page.Tabs, tab)
 	}
-	if next := cursor(entries, f.Limit); next != "" {
+	if next := cursor(entries, f); next != "" {
 		more := url.Values{}
 		for k, v := range scope {
 			more[k] = v
