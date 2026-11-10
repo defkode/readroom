@@ -1,0 +1,48 @@
+# Container Station application for the QNAP: Readroom behind its own Tailscale
+# node, served at https://readroom.<tailnet>.ts.net. No ports are published on the NAS.
+#
+# Before creating the app, build dist/readroom-arm64.tar with "make image-qnap",
+# copy it to a NAS share and import it under Container Station -> Images -> Import.
+# On first start, open the tailscale container's log and follow the login link.
+# The access token is generated at /share/Container/readroom/token.
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: readroom
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_ENABLE_HEALTH_CHECK=true
+      - TS_LOCAL_ADDR_PORT=127.0.0.1:9002
+    volumes:
+      - /share/Container/readroom-ts/state:/var/lib/tailscale
+      - /share/Container/readroom-ts/config:/config
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /config
+        cat > /config/serve.json <<'EOF'
+        {"TCP":{"443":{"HTTPS":true}},"Web":{"$${TS_CERT_DOMAIN}:443":{"Handlers":{"/":{"Proxy":"http://app:8090"}}}}}
+        EOF
+        exec /usr/local/bin/containerboot
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9002/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: always
+  # Named "app", not "readroom": the tailscale container's own hostname is
+  # "readroom", which would shadow the service name in its DNS lookups.
+  app:
+    image: readroom:latest
+    pull_policy: never
+    user: "0:0" # the bind-mounted share is not writable by the image's default user
+    environment:
+      - READROOM_TOKEN_FILE=/data/token
+      - READROOM_INTERVAL=30m
+    volumes:
+      - /share/Container/readroom:/data
+    restart: always

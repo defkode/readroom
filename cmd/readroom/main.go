@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +46,8 @@ func main() {
                 READROOM_ADDR      listen address            (default :8090)
                 READROOM_DB        SQLite database path      (default ./readroom.db)
                 READROOM_TOKEN     access token for UI + API (default: no authentication)
+                READROOM_TOKEN_FILE  read the token from this file instead; created with a
+                                   random token on first run
                 READROOM_INTERVAL  how often feeds are polled (default 30m)
                 READROOM_LOG       info or debug             (default info)
   summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"`)
@@ -52,6 +57,30 @@ func main() {
 		fmt.Fprintln(os.Stderr, "readroom:", err)
 		os.Exit(1)
 	}
+}
+
+// tokenFromFile reads the access token from path, creating a random one on first
+// run so the secret never has to appear in a compose file.
+func tokenFromFile(path string) (token string, created bool, err error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if token = strings.TrimSpace(string(data)); token == "" {
+			return "", false, errors.New("token file is empty")
+		}
+		return token, false, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", false, err
+	}
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", false, err
+	}
+	token = hex.EncodeToString(buf)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", false, err
+	}
+	return token, true, os.WriteFile(path, []byte(token+"\n"), 0o600)
 }
 
 func serve() error {
@@ -82,6 +111,15 @@ func serve() error {
 	go fetcher.Run(ctx)
 
 	token := os.Getenv("READROOM_TOKEN")
+	if path := os.Getenv("READROOM_TOKEN_FILE"); token == "" && path != "" {
+		var created bool
+		if token, created, err = tokenFromFile(path); err != nil {
+			return fmt.Errorf("READROOM_TOKEN_FILE: %w", err)
+		}
+		if created {
+			log.Info("generated a new access token", "file", path)
+		}
+	}
 	if token == "" {
 		log.Warn("READROOM_TOKEN is not set: the UI and API are open to anyone who can reach this port")
 	}

@@ -23,10 +23,13 @@ Without Docker on the target: `make build` produces `bin/readroom` (static, no d
 | `READROOM_ADDR` | `:8090` | listen address |
 | `READROOM_DB` | `./readroom.db` (`/data/readroom.db` in the image) | database path |
 | `READROOM_TOKEN` | *(none — open access)* | token for the UI login and `Authorization: Bearer` |
+| `READROOM_TOKEN_FILE` | | read the token from this file instead; a random one is generated there on first run |
 | `READROOM_INTERVAL` | `30m` | how often each feed is polled |
 | `READROOM_LOG` | `info` | `debug` logs every request |
 
-For the QNAP (arm64) or Proxmox (amd64), `make image-multiarch` writes loadable image archives to `dist/`.
+For Proxmox (amd64), `make image-multiarch` writes loadable image archives to `dist/`.
+For the QNAP, `make image-qnap` builds the arm64 archive in the layout Container Station can import, and
+`deploy/qnap-compose.yaml` is the application definition (Readroom behind its own Tailscale HTTPS node).
 
 ## API
 

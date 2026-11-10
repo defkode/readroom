@@ -5,7 +5,7 @@ GO       := docker run --rm --user $(shell id -u):$(shell id -g) \
             -e HOME=/cache -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod -e CGO_ENABLED=0 \
             -v $(CACHE):/cache -v $(CURDIR):/src -w /src $(GO_IMAGE)
 
-.PHONY: build test vet tidy run image image-multiarch
+.PHONY: build test vet tidy run image image-multiarch image-qnap
 
 build: ## static binary at bin/readroom (runs on the host too)
 	@mkdir -p $(CACHE) bin
@@ -31,3 +31,11 @@ image-multiarch: ## amd64 + arm64, written to dist/ as OCI archives for loading 
 	@mkdir -p dist
 	docker buildx build --platform linux/amd64 -t readroom:latest -o type=docker,dest=dist/readroom-amd64.tar .
 	docker buildx build --platform linux/arm64 -t readroom:latest -o type=docker,dest=dist/readroom-arm64.tar .
+
+image-qnap: ## arm64 archive in the classic "docker save" layout, which Container Station's importer requires
+	@mkdir -p dist
+	docker buildx build --platform linux/arm64 -t readroom:latest -o type=docker,dest=dist/readroom-arm64-oci.tar .
+	@rm -f dist/readroom-arm64.tar
+	docker run --rm -v $(CURDIR)/dist:/d quay.io/skopeo/stable:latest copy --override-arch arm64 --override-os linux \
+		docker-archive:/d/readroom-arm64-oci.tar docker-archive:/d/readroom-arm64.tar:readroom:latest
+	@rm -f dist/readroom-arm64-oci.tar
