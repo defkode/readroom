@@ -237,7 +237,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `eb74e49`. Later commits have only run locally
+- The NAS was updated on 2026-11-10 to the code at commit `9bfc1f7`. Later commits have only run locally
   until the next manual update.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
