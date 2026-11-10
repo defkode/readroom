@@ -1,0 +1,58 @@
+{{define "content"}}
+<form class="card row" data-action="add-feed">
+  <input name="url" type="url" placeholder="https://example.com/feed.xml" required autocomplete="off" aria-label="Feed URL">
+  <input name="category" placeholder="Category" list="categories" autocomplete="off" aria-label="Category">
+  <button class="btn">{{icon "plus"}} Add feed</button>
+</form>
+<datalist id="categories">{{range .Page}}<option value="{{.}}">{{end}}</datalist>
+
+{{range .Groups}}
+<h2 class="section">{{if .Category}}{{.Category}}{{else}}Uncategorised{{end}}</h2>
+<ul class="list">
+  {{range .Feeds}}
+  <li>
+    <button class="rowbtn" data-action="edit-feed"
+      data-id="{{.ID}}" data-url="{{.URL}}" data-title="{{.CustomTitle}}" data-feed-title="{{.FeedTitle}}"
+      data-category="{{.Category}}" data-preserve="{{.Preserve}}" data-since="{{day .PreserveSince}}">
+      <span class="body">
+        <span class="title">{{.Title}}</span>
+        <span class="sub">{{.URL}}</span>
+        {{if .LastError}}<span class="sub err">{{.LastError}}</span>{{end}}
+      </span>
+      <span class="tags">
+        {{if .Preserve}}<span class="tag">keeps copies{{if .PreserveSince}} since {{day .PreserveSince}}{{end}}</span>{{end}}
+        <span class="count">{{.Total}}</span>
+      </span>
+      {{icon "chevron"}}
+    </button>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+{{if not .Groups}}<p class="empty">No feeds yet. Paste a feed URL above, or import an OPML file below.</p>{{end}}
+
+<h2 class="section">Collection</h2>
+<ul class="list">
+  <li><label class="rowbtn">{{icon "plus"}}<span class="body"><span class="title">Import OPML</span><span class="sub">Add feeds exported from another reader</span></span><input type="file" accept=".opml,.xml,text/xml" data-action="import-opml" hidden></label></li>
+  <li><a class="rowbtn" href="/api/v1/export/opml" download>{{icon "download"}}<span class="body"><span class="title">Export OPML</span><span class="sub">Feed list only</span></span></a></li>
+  <li><a class="rowbtn" href="/api/v1/export/db" download>{{icon "download"}}<span class="body"><span class="title">Download everything</span><span class="sub">One SQLite file with all feeds, articles, images and readlists</span></span></a></li>
+</ul>
+{{if .Auth}}<form method="post" action="/logout" class="signout"><button class="btn quiet">Sign out</button></form>{{end}}
+
+<dialog id="feed-dialog" class="sheet">
+  <form data-action="save-feed">
+    <h2>Feed settings</h2>
+    <label>Name<input name="title" autocomplete="off"></label>
+    <label>Feed URL<input name="url" type="url" required autocomplete="off"></label>
+    <label>Category<input name="category" list="categories" autocomplete="off" placeholder="None"></label>
+    <label class="switch"><span>Keep local copies<small>Store each article's full text and images, so it survives if the original disappears</small></span><input type="checkbox" name="preserve"></label>
+    <label class="since">Only articles published since<input type="date" name="since"><small>Leave empty to keep every article, including older ones already in the feed</small></label>
+    <div class="buttons">
+      <button class="btn" value="save">Save</button>
+      <button class="btn quiet" type="button" data-action="refresh-feed">{{icon "refresh"}} Refresh now</button>
+      <button class="btn quiet danger" type="button" data-action="delete-feed">Delete feed</button>
+      <button class="btn quiet" type="button" data-action="close-dialog">Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{end}}

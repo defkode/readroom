@@ -1,0 +1,15 @@
+services:
+  readroom:
+    build: .
+    image: readroom:latest
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      READROOM_TOKEN: ${READROOM_TOKEN:?set READROOM_TOKEN, e.g. in a .env file next to this one}
+      READROOM_INTERVAL: 30m
+    volumes:
+      - readroom-data:/data
+
+volumes:
+  readroom-data:

@@ -1,0 +1,9 @@
+{{define "content"}}
+<form class="login" method="post" action="/login">
+  <img src="/icon/192.png" alt="" width="72" height="72">
+  <h2>Readroom</h2>
+  {{if .Page}}<p class="err">That token isn't right.</p>{{end}}
+  <input type="password" name="token" placeholder="Access token" required autofocus autocomplete="current-password" aria-label="Access token">
+  <button class="btn wide">Sign in</button>
+</form>
+{{end}}

@@ -1,0 +1,52 @@
+{{define "actions"}}{{with .Page}}{{with .Entry}}
+<button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
+<button class="iconbtn" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Add to readlist" title="Readlists">{{icon "lists"}}</button>
+<button class="iconbtn toggle{{if .Preserved}} on{{end}}" data-action="preserve" data-id="{{.ID}}" aria-label="Keep a local copy" title="{{if .Preserved}}Saved locally{{else}}Keep a local copy{{end}}"{{if .Preserved}} disabled{{end}}>{{icon "archive"}}</button>
+<button class="iconbtn" data-action="open-dialog" data-dialog="export-dialog" aria-label="Export" title="Export">{{icon "download"}}</button>
+{{if .URL}}<a class="iconbtn" href="{{.URL}}" target="_blank" rel="noopener noreferrer" aria-label="Open original" title="Open original">{{icon "external"}}</a>{{end}}
+{{end}}{{end}}{{end}}
+
+{{define "content"}}{{with .Page}}
+<article class="article">
+  {{with .Entry}}
+  <header>
+    <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
+    <h1>{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</h1>
+    <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .Preserved}} · saved locally{{end}}</p>
+  </header>
+  {{end}}
+  {{if .Paragraph}}
+  <section class="summary">
+    <h2>Summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>
+    {{range .Paragraph}}<p>{{.}}</p>{{end}}
+  </section>
+  {{end}}
+  <div class="content">{{html .Entry.Body}}</div>
+  <footer>
+    {{if .Entry.PreserveError}}<p class="hint">Local copy failed: {{.Entry.PreserveError}}</p>{{end}}
+    <button class="btn quiet" data-action="mark-unread" data-id="{{.Entry.ID}}">Mark as unread</button>
+  </footer>
+</article>
+
+<dialog id="lists-dialog" class="sheet">
+  <h2>Readlists</h2>
+  <ul class="list checks" id="list-checks">
+    {{range .Lists}}<li><label><input type="checkbox" data-action="toggle-list" data-list="{{.ID}}" data-id="{{$.Page.Entry.ID}}"{{if .Member}} checked{{end}}><span>{{.Name}}</span></label></li>{{end}}
+  </ul>
+  <form class="row" data-action="create-list" data-id="{{.Entry.ID}}">
+    <input name="name" placeholder="New readlist" required autocomplete="off">
+    <button class="btn">Add</button>
+  </form>
+  <form method="dialog"><button class="btn quiet wide">Done</button></form>
+</dialog>
+
+<dialog id="export-dialog" class="sheet">
+  <h2>Export article</h2>
+  <ul class="list">
+    <li><a href="/api/v1/entries/{{.Entry.ID}}/export?format=epub" download>{{icon "download"}}<span>EPUB <small>for reMarkable and e-readers</small></span></a></li>
+    <li><a href="/api/v1/entries/{{.Entry.ID}}/export?format=md" download>{{icon "download"}}<span>Markdown</span></a></li>
+  </ul>
+  {{if not .Entry.Preserved}}<p class="hint">Images are only included in the EPUB once a local copy has been kept.</p>{{end}}
+  <form method="dialog"><button class="btn quiet wide">Done</button></form>
+</dialog>
+{{end}}{{end}}

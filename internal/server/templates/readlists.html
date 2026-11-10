@@ -1,0 +1,22 @@
+{{define "content"}}
+<form class="card row" data-action="create-list">
+  <input name="name" placeholder="New readlist" required autocomplete="off" aria-label="Readlist name">
+  <button class="btn">{{icon "plus"}} Create</button>
+</form>
+{{if .Readlists}}
+<ul class="list">
+  {{range .Readlists}}
+  <li class="split">
+    <a class="rowbtn" href="/?readlist_id={{.ID}}">{{icon "lists"}}<span class="body"><span class="title">{{.Name}}</span><span class="sub">{{.Count}} article{{if ne .Count 1}}s{{end}}</span></span></a>
+    <span class="rowactions">
+      <a class="btn quiet" href="/api/v1/readlists/{{.ID}}/export?format=epub" download>EPUB</a>
+      <a class="btn quiet" href="/api/v1/readlists/{{.ID}}/export?format=md" download>Markdown</a>
+      <button class="btn quiet danger" data-action="delete-list" data-id="{{.ID}}" data-name="{{.Name}}">Delete</button>
+    </span>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Readlists collect articles you want to read together. Export one as an EPUB to read it on an e-reader.</p>
+{{end}}
+{{end}}

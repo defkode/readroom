@@ -1,0 +1,37 @@
+{{define "actions"}}{{with .Page}}{{if .CanMark}}
+<button class="iconbtn" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}} aria-label="Mark all as read" title="Mark all as read">{{icon "check"}}</button>
+{{end}}{{end}}{{end}}
+
+{{define "content"}}{{with .Page}}
+<div class="filters">
+  <div class="segmented" role="tablist">
+    {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}</a>{{end}}
+  </div>
+  <form class="search" action="/" method="get" role="search">
+    {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+    {{icon "search"}}<input type="search" name="q" value="{{.Query}}" placeholder="Search titles and summaries" aria-label="Search">
+  </form>
+</div>
+{{if .Entries}}
+<ul class="list entries" id="entries">{{template "items" .}}</ul>
+{{else}}
+<p class="empty">{{.Empty}}</p>
+{{end}}
+{{end}}{{end}}
+
+{{define "items"}}
+{{range .Entries}}
+<li class="entry{{if .Read}} read{{end}}">
+  <a href="/entries/{{.ID}}">
+    <span class="dot" aria-hidden="true"></span>
+    <span class="body">
+      <span class="meta"><span class="feed">{{.FeedTitle}}</span><time datetime="{{.PublishedAt}}">{{ago .PublishedAt}}</time></span>
+      <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
+      {{if .Summary}}<span class="snippet">{{.Summary}}</span>{{end}}
+      {{if or .Starred .Preserved}}<span class="flags">{{if .Starred}}<span class="starred">{{icon "star"}}</span>{{end}}{{if .Preserved}}{{icon "archive"}}{{end}}</span>{{end}}
+    </span>
+  </a>
+</li>
+{{end}}
+{{if .More}}<li class="more"><button class="btn quiet" data-action="load-more" data-url="{{.More}}">Load more</button></li>{{end}}
+{{end}}
