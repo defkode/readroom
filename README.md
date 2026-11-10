@@ -8,6 +8,8 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 - Preserved articles (text + images) live inside the database, so they survive the original going away
 - Export an article or a readlist as EPUB or Markdown; download the whole collection as one `.db` file
 
+What it does and why it is built this way: [`docs/SPEC.md`](docs/SPEC.md).
+
 ## Run
 
 ```sh
