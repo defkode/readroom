@@ -118,6 +118,10 @@ ALTER TABLE feeds ADD COLUMN last_ok_at TEXT;
 UPDATE feeds SET fail_count = 1, failing_since = last_fetched_at WHERE last_error != '';
 UPDATE feeds SET last_ok_at = last_fetched_at WHERE last_error = '';
 `,
+	`
+-- When the owner hid the entry; hidden entries stay out of every list and count.
+ALTER TABLE entries ADD COLUMN hidden_at TEXT;
+`,
 }
 
 func Open(path string) (*Store, error) {

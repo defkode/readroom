@@ -39,8 +39,8 @@ const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
        f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
        f.fail_count, f.failing_since, f.last_ok_at, (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
-       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0),
-       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id)
+       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL),
+       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL)
 FROM feeds f`
 
 func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {

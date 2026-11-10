@@ -16,7 +16,10 @@
     <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .ReadingMinutes}} · {{.ReadingMinutes}} min read{{end}}{{if .Preserved}} · saved locally{{end}}</p>
     <p class="status">
       {{if not $.Page.FirstRead}}<span class="read" title="{{if .ReadAt}}Read on {{date (deref .ReadAt)}}{{else}}Read before reading times were recorded{{end}}">{{icon "check"}}{{readWhen .ReadAt}}</span>{{end}}
+      {{if .Hidden}}<span class="read">{{icon "hide"}}Hidden</span>{{end}}
       <button data-action="mark-unread" data-id="{{.ID}}">Mark as unread</button>
+      {{if .Hidden}}<button data-action="unhide-entry" data-id="{{.ID}}">Show again</button>
+      {{else}}<button data-action="hide-entry" data-id="{{.ID}}" title="Keep this article out of every list">Hide</button>{{end}}
       {{if .PreserveError}}<span class="err">Local copy failed: {{.PreserveError}}</span>{{end}}
     </p>
   </header>

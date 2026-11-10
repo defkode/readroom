@@ -254,6 +254,7 @@ type entriesPage struct {
 	Unread     int64       // how many articles "mark all as read" would mark
 	Feed       *store.Feed // set when the list is one feed, whose settings can be opened here
 	Notice     bool        // the main Unread list: the place to say that feeds have stopped updating
+	HiddenView bool        // the list of hidden articles, whose rows offer to show them again
 	Categories []string    // for the feed settings sheet
 	Empty      string
 }
@@ -312,6 +313,12 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		if !scoped {
 			title, tab, active = "Starred", "starred", "view:starred"
 		}
+	case "hidden":
+		// What the owner put away, across everything; the one place it can be brought back.
+		f = store.EntryFilter{Hidden: true, Query: f.Query, Before: f.Before, Limit: f.Limit}
+		scope, scoped, feed = url.Values{}, false, nil
+		empty = "Nothing is hidden."
+		title, tab, active = "Hidden articles", "manage", "hidden"
 	default:
 		view = "all"
 		if !scoped {
@@ -329,7 +336,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	page := entriesPage{Entries: entries, View: view, Query: f.Query, Hidden: map[string]string{"view": view},
 		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: empty, Feed: feed,
-		Notice: !scoped && view == "unread" && f.Query == ""}
+		Notice: !scoped && view == "unread" && f.Query == "", HiddenView: view == "hidden"}
 	if feed != nil && q.Get("partial") == "" {
 		if page.Categories, err = s.Store.Categories(ctx); err != nil {
 			s.webFail(w, err)
@@ -338,7 +345,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	// Bulk marking covers a whole feed, category or everything, so it is not offered
 	// where the list shows a narrower selection (a readlist, starred, a search).
-	if page.CanMark = f.ReadlistID == 0 && view != "starred" && f.Query == ""; page.CanMark && q.Get("partial") == "" {
+	if page.CanMark = f.ReadlistID == 0 && view != "starred" && view != "hidden" && f.Query == ""; page.CanMark && q.Get("partial") == "" {
 		if page.Unread, err = s.Store.CountUnread(ctx, store.ReadScope{FeedID: f.FeedID, Category: f.Category}); err != nil {
 			s.webFail(w, err)
 			return
@@ -348,6 +355,9 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		page.Hidden[k] = scope.Get(k)
 	}
 	for _, t := range [][2]string{{"unread", "Unread"}, {"all", "All"}, {"starred", "Starred"}} {
+		if view == "hidden" {
+			break // not a view of a list: it has no siblings
+		}
 		link := url.Values{"view": {t[0]}}
 		for k, v := range scope {
 			link[k] = v

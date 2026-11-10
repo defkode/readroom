@@ -59,6 +59,7 @@
 <h2 class="section">Collection</h2>
 <ul class="list">
   <li><label class="rowbtn">{{icon "plus"}}<span class="body"><span class="title">Import OPML</span><span class="sub">Add feeds exported from another reader</span></span><input type="file" accept=".opml,.xml,text/xml" data-action="import-opml" hidden></label></li>
+  <li><a class="rowbtn" href="/?view=hidden">{{icon "hide"}}<span class="body"><span class="title">Hidden articles</span><span class="sub">Articles you put away; show them again from here</span></span>{{icon "chevron"}}</a></li>
   <li><a class="rowbtn" href="/api/v1/export/opml" download>{{icon "download"}}<span class="body"><span class="title">Export OPML</span><span class="sub">Feed list only</span></span></a></li>
   <li><a class="rowbtn" href="/api/v1/export/db" download>{{icon "download"}}<span class="body"><span class="title">Download everything</span><span class="sub">One SQLite file with all feeds, articles, images and readlists</span></span></a></li>
 </ul>

@@ -90,10 +90,17 @@ try {
   const undo = JSON.parse(sessionStorage.getItem(undoKey));
   sessionStorage.removeItem(undoKey);
   if (undo && Date.now() - undo.at < 5000) {
-    toast(`Marked ${undo.ids.length} as read`, { label: 'Undo', run: async () => {
-      await api('POST', '/entries/mark-unread', { ids: undo.ids });
-      location.reload();
-    } });
+    if (undo.hidden) {
+      toast('Hidden', { label: 'Undo', run: async () => {
+        await api('PATCH', `/entries/${undo.hidden}`, { hidden: false });
+        location.reload();
+      } });
+    } else {
+      toast(`Marked ${undo.ids.length} as read`, { label: 'Undo', run: async () => {
+        await api('POST', '/entries/mark-unread', { ids: undo.ids });
+        location.reload();
+      } });
+    }
   }
 } catch { /* storage unavailable */ }
 
@@ -119,6 +126,20 @@ if (outage) {
   try { dismissed = localStorage.getItem(outageKey); } catch { /* always shown */ }
   outage.hidden = dismissed === outage.dataset.key;
 }
+
+// Hiding puts an article out of every list for good; the row goes at once and
+// the message that follows can bring it back.
+const hideRow = async (row) => {
+  const id = row.dataset.id;
+  await api('PATCH', `/entries/${id}`, { hidden: true });
+  row.remove();
+  if (!document.querySelector('#entries .entry')) return location.reload();
+  refreshCounts();
+  toast('Hidden', { label: 'Undo', run: async () => {
+    await api('PATCH', `/entries/${id}`, { hidden: false });
+    location.reload();
+  } });
+};
 
 const actions = {
   async 'toggle-star'(el) {
@@ -158,6 +179,29 @@ const actions = {
   },
   'mark-all-read'(el) { return markRead(el, {}); },
   'read-through'(el) { return markRead(el, { through: +el.dataset.id }); },
+  'row-hide'(el) {
+    const row = rowOf(el);
+    closeMenu(el);
+    return hideRow(row);
+  },
+  async 'row-unhide'(el) {
+    const row = rowOf(el);
+    closeMenu(el);
+    await api('PATCH', `/entries/${el.dataset.id}`, { hidden: false });
+    row.remove();
+    if (!document.querySelector('#entries .entry')) return location.reload();
+    toast('Shown again');
+  },
+  // From the article: hide it and go back to the list, which offers the undo.
+  async 'hide-entry'(el) {
+    await api('PATCH', `/entries/${el.dataset.id}`, { hidden: true });
+    try { sessionStorage.setItem(undoKey, JSON.stringify({ hidden: +el.dataset.id, at: Date.now() })); } catch { /* no undo then */ }
+    location.href = document.querySelector('.topbar .back').href;
+  },
+  async 'unhide-entry'(el) {
+    await api('PATCH', `/entries/${el.dataset.id}`, { hidden: false });
+    location.reload();
+  },
   'row-read'(el) {
     const row = rowOf(el);
     closeMenu(el);
@@ -477,6 +521,14 @@ const listKeys = {
   Enter: () => { const row = cursor(); if (row) openArticle(row.querySelector('a').href); },
   m: () => { const row = cursor(); if (row) return setRead(row, !row.classList.contains('read')); },
   s: () => { const row = cursor(); if (row) return setStar(row, !row.classList.contains('starred')); },
+  h: () => {
+    const row = cursor();
+    if (!row) return;
+    // Keep a row selected: the next one, or the previous at the end of the list.
+    const next = row.nextElementSibling && row.nextElementSibling.matches('.entry') ? row.nextElementSibling : row.previousElementSibling;
+    if (next) setCursor(next);
+    return hideRow(row);
+  },
   '/': () => document.querySelector('.search input').focus(),
 };
 listKeys.o = listKeys.Enter;
@@ -487,6 +539,7 @@ const articleKeys = {
   Escape: () => click('.topbar .back'),
   m: () => click('[data-action="mark-unread"]'),
   s: () => click('.actions [data-action="toggle-star"]'),
+  h: () => click('[data-action="hide-entry"]'),
   v: () => click('.actions a[target="_blank"]'),
 };
 document.addEventListener('keydown', (e) => {

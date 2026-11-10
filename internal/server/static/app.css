@@ -347,6 +347,7 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article .status .read { display: inline-flex; align-items: center; gap: 5px; }
 .article .status .icon { width: 15px; height: 15px; color: var(--accent); stroke-width: 2.4; }
 .article .status button { margin-left: auto; padding: 5px 12px; border: 0; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.article .status button + button { margin-left: 0; }
 .article .status button:active { opacity: .7; }
 .article .status .err { flex-basis: 100%; }
 .summary { margin: 22px 0; padding: 14px 16px; border-radius: var(--radius); background: var(--accent-soft); }

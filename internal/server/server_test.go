@@ -525,3 +525,55 @@ func TestAddingFeedsIsValidated(t *testing.T) {
 		t.Errorf("changing to an address without a feed: got %d, want 422", resp.StatusCode)
 	}
 }
+
+// A hidden article is in no list and no count until it is shown again, which
+// brings it back exactly as it was.
+func TestHidingEntries(t *testing.T) {
+	a, site := newApp(t), origin(t)
+	var feed store.Feed
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0}, &feed)
+	var list struct{ Entries []store.Entry }
+	a.call("GET", "/api/v1/entries", nil, &list)
+	if len(list.Entries) != 2 {
+		t.Fatalf("%d entries, want 2", len(list.Entries))
+	}
+	id := list.Entries[0].ID
+	var rl store.Readlist
+	a.call("POST", "/api/v1/readlists", map[string]any{"name": "Keep"}, &rl)
+	a.call("PUT", fmt.Sprintf("/api/v1/readlists/%d/entries/%d", rl.ID, id), nil, nil)
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", id), map[string]any{"starred": true}, nil)
+
+	var e store.Entry
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", id), map[string]any{"hidden": true}, &e)
+	if !e.Hidden {
+		t.Fatal("entry is not hidden after PATCH")
+	}
+	for _, query := range []string{"", "?starred=true", fmt.Sprintf("?readlist_id=%d", rl.ID), "?q=Hello", "?read=false"} {
+		a.call("GET", "/api/v1/entries"+query, nil, &list)
+		for _, item := range list.Entries {
+			if item.ID == id {
+				t.Errorf("hidden entry is listed by /entries%s", query)
+			}
+		}
+	}
+	a.call("GET", fmt.Sprintf("/api/v1/feeds/%d", feed.ID), nil, &feed)
+	a.call("GET", fmt.Sprintf("/api/v1/readlists/%d", rl.ID), nil, &rl)
+	if feed.Total != 1 || feed.Unread != 1 || rl.Count != 0 {
+		t.Errorf("counts with one entry hidden: feed total %d unread %d, readlist %d", feed.Total, feed.Unread, rl.Count)
+	}
+	a.call("GET", "/api/v1/entries?hidden=true", nil, &list)
+	if len(list.Entries) != 1 || list.Entries[0].ID != id {
+		t.Fatalf("hidden=true lists %d entries", len(list.Entries))
+	}
+	// A refresh must not bring it back as new.
+	a.call("POST", fmt.Sprintf("/api/v1/feeds/%d/refresh", feed.ID), nil, &feed)
+	if feed.Total != 1 {
+		t.Errorf("after a refresh the feed shows %d articles, want 1", feed.Total)
+	}
+
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", id), map[string]any{"hidden": false}, &e)
+	a.call("GET", fmt.Sprintf("/api/v1/readlists/%d", rl.ID), nil, &rl)
+	if e.Hidden || !e.Starred || !e.InReadlist || rl.Count != 1 {
+		t.Errorf("after showing it again: hidden %v starred %v in readlist %v, readlist count %d", e.Hidden, e.Starred, e.InReadlist, rl.Count)
+	}
+}

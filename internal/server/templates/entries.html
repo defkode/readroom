@@ -14,9 +14,10 @@
 </div>
 {{end}}
 <div class="filters">
-  <div class="segmented" role="tablist">
+  {{if .HiddenView}}<p class="hint">Hidden articles stay out of every list, count and export. They can be shown again from here.</p>{{end}}
+  {{if .Tabs}}<div class="segmented" role="tablist">
     {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}{{if .Count}}<b>{{.Count}}</b>{{end}}</a>{{end}}
-  </div>
+  </div>{{end}}
   <form class="search" action="/" method="get" role="search">
     {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
     {{icon "search"}}<input type="search" name="q" value="{{.Query}}" placeholder="Search titles and summaries" aria-label="Search">
@@ -34,6 +35,8 @@
   {{if .ListID}}<button role="menuitem" data-action="remove-from-list" data-list="{{.ListID}}">{{icon "close"}}<span>Remove from readlist</span></button>{{end}}
   <button role="menuitem" data-action="row-star">{{icon "star"}}<span>Star</span></button>
   <button role="menuitem" data-action="row-preserve">{{icon "archive"}}<span>Keep a local copy</span></button>
+  {{if .HiddenView}}<button role="menuitem" data-action="row-unhide">{{icon "eye"}}<span>Show again</span></button>
+  {{else}}<button role="menuitem" data-action="row-hide">{{icon "hide"}}<span>Hide</span></button>{{end}}
 </div>
 {{/* The same sheet as in an article; the script ticks the lists the chosen row's article is in. */}}
 <dialog id="lists-dialog" class="sheet">

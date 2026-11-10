@@ -277,7 +277,8 @@ func boolParam(q url.Values, name string) *bool {
 func entryFilter(q url.Values) store.EntryFilter {
 	f := store.EntryFilter{
 		Read: boolParam(q, "read"), Starred: boolParam(q, "starred"), Preserved: boolParam(q, "preserved"),
-		Query: q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc",
+		Hidden: q.Get("hidden") == "true",
+		Query:  q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc",
 	}
 	f.FeedID, _ = strconv.ParseInt(q.Get("feed_id"), 10, 64)
 	f.ReadlistID, _ = strconv.ParseInt(q.Get("readlist_id"), 10, 64)
@@ -331,6 +332,7 @@ func (s *Server) apiUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Read         *bool   `json:"read"`
 		Starred      *bool   `json:"starred"`
+		Hidden       *bool   `json:"hidden"`
 		Summary      *string `json:"summary"`
 		SummaryModel *string `json:"summary_model"`
 	}
@@ -343,7 +345,7 @@ func (s *Server) apiUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.UpdateEntry(r.Context(), id, store.EntryPatch{
-		Read: in.Read, Starred: in.Starred, Summary: in.Summary, SummaryModel: in.SummaryModel,
+		Read: in.Read, Starred: in.Starred, Hidden: in.Hidden, Summary: in.Summary, SummaryModel: in.SummaryModel,
 	}); err != nil {
 		s.fail(w, err)
 		return

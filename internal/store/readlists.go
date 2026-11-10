@@ -16,7 +16,8 @@ type Readlist struct {
 
 const readlistSelect = `
 SELECT r.id, r.name, r.created_at,
-       (SELECT count(*) FROM readlist_entries re WHERE re.readlist_id = r.id)
+       (SELECT count(*) FROM readlist_entries re JOIN entries e ON e.id = re.entry_id
+        WHERE re.readlist_id = r.id AND e.hidden_at IS NULL)
 FROM readlists r`
 
 func scanReadlist(r interface{ Scan(...any) error }) (*Readlist, error) {
@@ -84,7 +85,7 @@ func (s *Store) RemoveFromReadlist(ctx context.Context, listID, entryID int64) e
 func (s *Store) ReadlistEntries(ctx context.Context, listID int64) ([]*Entry, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, e.content, e.preserved_content
 FROM readlist_entries re JOIN entries e ON e.id = re.entry_id JOIN feeds f ON f.id = e.feed_id
-WHERE re.readlist_id = ? ORDER BY re.added_at, e.id`, listID)
+WHERE re.readlist_id = ? AND e.hidden_at IS NULL ORDER BY re.added_at, e.id`, listID)
 	if err != nil {
 		return nil, err
 	}

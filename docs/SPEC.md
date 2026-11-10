@@ -61,7 +61,7 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
   `content` (sanitised HTML from the feed), `preserved_content` + `preserved_at` (the local full copy),
   preservation bookkeeping (`preserve_requested`, `preserve_attempts`, `preserve_error`), `excerpt`,
   `image` (thumbnail of a picture-only entry), `text_length`, `summary` + `summary_model` (written by a
-  model through the API), `read`, `starred`.
+  model through the API), `read`, `starred`, `hidden_at`.
 - **assets** / **entry_assets** — preserved images as blobs, keyed by SHA-256, linked to the entries
   that use them.
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
@@ -176,6 +176,12 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `/` search) and in an
   article (`j`/`k` next and previous, `u` back, `m` unread, `s` star, `v` original); `?` lists them.
 - Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
+- **Hiding:** an article can be hidden for good — from its row menu, from the article, or with `h` —
+  to keep the collection to what is worth keeping. A hidden article is in no list, search, count,
+  readlist, export or summary queue, and a refresh does not bring it back. Nothing else about it
+  changes, so "Show again" restores it exactly, star and readlists included. Hiding is followed by an
+  Undo; later, hidden articles are listed under Settings → Hidden articles (Manage on a phone). They
+  expire with the feed's other articles.
 - Search matches the title, the AI summary and the excerpt (substring, not full text).
 
 ### Export
@@ -257,6 +263,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on the NAS every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
 | A feed is reported as broken only after 3 failed fetches in a row, on the Unread list rather than only in Manage feeds | one timeout is not news; and the place the owner looks every day is the only place a silent failure gets noticed |
 | Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |
+| Unwanted articles are hidden, not deleted, and hiding touches nothing else | a deleted article would come back as new on the next fetch; leaving its star and readlists alone makes "Show again" an exact undo |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |

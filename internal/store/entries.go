@@ -32,6 +32,7 @@ type Entry struct {
 	ReadAt         *string `json:"read_at"` // when it was marked read; null if unread or not recorded
 	Starred        bool    `json:"starred"`
 	InReadlist     bool    `json:"in_readlist"` // member of at least one readlist
+	Hidden         bool    `json:"hidden"`      // put away by the owner: in no list, no count, no export
 	Preserved      bool    `json:"preserved"`
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
@@ -54,13 +55,13 @@ func (e *Entry) Body() string {
 const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
-e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id),
+e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
 e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
-		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Preserved, &e.PreservedAt,
+		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
 		&e.PreserveError, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
@@ -96,6 +97,7 @@ type EntryFilter struct {
 	Read       *bool
 	Starred    *bool
 	Preserved  *bool
+	Hidden     bool // the hidden entries instead of the visible ones
 	HasSummary *bool
 	Query      string // substring match on title and summary
 	Before     string // pagination cursor: "published_at,id" of the last item seen
@@ -108,6 +110,11 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 	add := func(cond string, a ...any) {
 		where = append(where, cond)
 		args = append(args, a...)
+	}
+	if f.Hidden {
+		add("e.hidden_at IS NOT NULL")
+	} else {
+		add("e.hidden_at IS NULL")
 	}
 	if f.FeedID != 0 {
 		add("e.feed_id = ?", f.FeedID)
@@ -282,6 +289,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`
 type EntryPatch struct {
 	Read         *bool
 	Starred      *bool
+	Hidden       *bool
 	Summary      *string
 	SummaryModel *string
 }
@@ -301,6 +309,15 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
 	if p.Starred != nil {
 		set = append(set, "starred = ?")
 		args = append(args, b2i(*p.Starred))
+	}
+	if p.Hidden != nil {
+		// Hiding changes nothing else, so showing the entry again restores it exactly.
+		if *p.Hidden {
+			set = append(set, "hidden_at = coalesce(hidden_at, ?)")
+			args = append(args, Now())
+		} else {
+			set = append(set, "hidden_at = NULL")
+		}
 	}
 	if p.Summary != nil {
 		set = append(set, "summary = ?")
@@ -325,7 +342,7 @@ type ReadScope struct {
 }
 
 func (sc ReadScope) where() (string, []any) {
-	q := ` WHERE read = 0`
+	q := ` WHERE read = 0 AND hidden_at IS NULL`
 	var args []any
 	if sc.FeedID != 0 {
 		q += ` AND feed_id = ?`
@@ -432,7 +449,7 @@ const needsCopyFirst = `(e.preserved_at IS NULL AND e.preserve_attempts < ` + "3
   AND (e.preserve_requested = 1
        OR (f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since))))`
 
-const pendingSummaryWhere = `f.ai_summary = 1 AND e.summary = '' AND e.text_length >= ? AND NOT ` + needsCopyFirst
+const pendingSummaryWhere = `f.ai_summary = 1 AND e.hidden_at IS NULL AND e.summary = '' AND e.text_length >= ? AND NOT ` + needsCopyFirst
 
 // PendingSummaries lists entries waiting for an AI summary, newest first: their
 // feed has AI summaries on, they have none yet, and the text is at least
@@ -550,7 +567,7 @@ func (s *Store) PendingPreserve(ctx context.Context, limit int) ([]*Entry, error
 FROM entries e JOIN feeds f ON f.id = e.feed_id
 WHERE e.preserved_at IS NULL AND e.preserve_attempts < ?
   AND (e.preserve_requested = 1
-       OR (f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since)))
+       OR (e.hidden_at IS NULL AND f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since)))
 ORDER BY e.preserve_requested DESC, e.published_at DESC LIMIT ?`, maxPreserveAttempts, limit)
 	if err != nil {
 		return nil, err
