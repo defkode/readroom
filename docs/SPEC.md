@@ -254,9 +254,12 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   owner's password manager. The token-file option is not used there, because a file written by the
   container is root-only on the share and File Station cannot open it. The repository's
   `deploy/qnap-compose.yaml` carries a `CHANGE_ME` placeholder; the real value is never committed.
-- **Updates are manual:** `make image-qnap` → copy the archive to a NAS share → Container Station
-  Images → Import → recreate the application. Container Station only imports the classic
-  `docker save` layout, hence the conversion step in that target. Data survives updates; migrations
+- **Updates are pulled, when the owner chooses:** a push to `main` runs the tests and publishes
+  `ghcr.io/defkode/readroom` for arm64 and amd64 (`:latest`, and `:sha-<commit>` to go back to; a
+  `v*` tag adds a version tag). On the NAS, recreating the application pulls the newest image —
+  nothing updates by itself. While the package is private the NAS pulls with a GitHub token limited
+  to `read:packages`. `make image-qnap` remains as the offline route: an archive in the classic
+  `docker save` layout, the only one Container Station imports. Data survives updates; migrations
   run forward only, so going back to an older image after a schema change means restoring the
   database from a snapshot.
 - Development needs only Docker: every `make` target runs the Go toolchain in a container.
@@ -303,6 +306,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
+| Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
 - Summaries are produced only while the owner's desktop is on: the scheduled job and the model run there,
   not on the NAS.
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on
@@ -317,8 +321,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   list proves too easy to miss.
 - Full-text search (SQLite FTS5).
 - Polish interface.
-- Automated multi-arch images in a registry with versioned tags, so the NAS updates by pulling and
-  other people can try it; that also needs a licence and a decision on making the repository public.
+- Letting other people try it: the images are already in a registry, but that needs a licence and a
+  decision on making the repository and the package public.
 - Leasing in the summary queue, if more than one summariser runs.
 - Before the repository goes public: move the installation specifics (tailnet address, NAS paths)
   out of this document and `CLAUDE.md`.

@@ -1,8 +1,11 @@
 # Container Station application for the QNAP: Readroom behind its own Tailscale
 # node, served at https://readroom.<tailnet>.ts.net. No ports are published on the NAS.
 #
-# Before creating the app, build dist/readroom-arm64.tar with "make image-qnap",
-# copy it to a NAS share and import it under Container Station -> Images -> Import.
+# The image is built by GitHub Actions (.github/workflows/image.yml) and pulled from
+# the GitHub Container Registry; recreating the application fetches the newest one.
+# While the package is private, the NAS needs a ghcr.io login to pull it (a GitHub
+# token with read:packages only). To pin or go back, replace ":latest" with a
+# ":sha-<commit>" or version tag.
 # On first start, open the tailscale container's log and follow the newest login
 # link within 60 seconds (the container restarts with a fresh link after that).
 #
@@ -40,8 +43,8 @@ services:
   # Named "app", not "readroom": the tailscale container's own hostname is
   # "readroom", which would shadow the service name in its DNS lookups.
   app:
-    image: readroom:latest
-    pull_policy: never
+    image: ghcr.io/defkode/readroom:latest
+    pull_policy: always
     user: "0:0" # the bind-mounted share is not writable by the image's default user
     environment:
       # Set directly rather than through READROOM_TOKEN_FILE: a token file written by

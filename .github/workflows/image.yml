@@ -1,0 +1,68 @@
+# Builds the image the QNAP runs and publishes it to the GitHub Container Registry,
+# so the NAS updates by pulling instead of importing an archive copied to a share.
+#
+#   push to main  ->  ghcr.io/<owner>/readroom:latest  and  :sha-<commit>
+#   tag v1.2.3    ->  :1.2.3  and  :sha-<commit>
+#   run by hand   ->  :sha-<commit>  (plus :latest when run on main)
+#
+# deploy/qnap-compose.yaml points at :latest; a :sha-… or version tag is there to go back to.
+name: Image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Nothing is published from a tree that does not pass.
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Work out the image tags
+        id: meta
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags="$image:sha-${GITHUB_SHA::7}"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then tags="$tags,$image:latest"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tags="$tags,$image:${GITHUB_REF_NAME#v}"; fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # arm64 for the QNAP, amd64 for Proxmox. The Dockerfile cross-compiles, so
+      # neither needs emulation. No provenance attestation: it turns the manifest
+      # into an index with extra entries that older Docker engines can trip over.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64,linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

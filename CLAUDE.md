@@ -25,13 +25,17 @@ when behaviour changes; add new decisions to the table in SPEC §8.
 
 ## Deployment (QNAP, when asked)
 
-1. `make image-qnap` → `dist/readroom-arm64.tar`. Container Station rejects the buildx OCI layout
-   ("invalid file format"); this target converts to the classic `docker save` layout with skopeo.
-2. Copy the archive to a NAS share, then Container Station → Images → Import (from the local device).
-3. Applications → `readroom` → recreate, pasting `deploy/qnap-compose.yaml`. Replace `CHANGE_ME` with
-   the real token in the editor — the owner pastes it; it lives in their password manager and must
-   never be committed or echoed.
-4. Check `https://readroom.<tailnet>.ts.net/healthz`, then delete the archive from the share.
+1. Push to `main` (when asked). `.github/workflows/image.yml` runs the tests and publishes
+   `ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`; wait for the run to go green
+   (`gh run watch`).
+2. Container Station → Applications → `readroom` → recreate with `deploy/qnap-compose.yaml`, which
+   pulls the new image. Replace `CHANGE_ME` with the real token in the editor — the owner pastes it;
+   it lives in their password manager and must never be committed or echoed.
+3. Check `https://readroom.<tailnet>.ts.net/healthz`.
+
+Without the registry: `make image-qnap` → `dist/readroom-arm64.tar`, import it under Container Station
+→ Images, and run it with `image: readroom:latest` and `pull_policy: never`. Container Station rejects
+the buildx OCI layout ("invalid file format"); the target converts to the classic `docker save` layout.
 
 Gotchas learned the hard way:
 

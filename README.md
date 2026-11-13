@@ -30,8 +30,10 @@ Without Docker on the target: `make build` produces `bin/readroom` (static, no d
 | `READROOM_LOG` | `info` | `debug` logs every request |
 
 For Proxmox (amd64), `make image-multiarch` writes loadable image archives to `dist/`.
-For the QNAP, `make image-qnap` builds the arm64 archive in the layout Container Station can import, and
-`deploy/qnap-compose.yaml` is the application definition (Readroom behind its own Tailscale HTTPS node).
+For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (arm64 and amd64) from
+`.github/workflows/image.yml`, and `deploy/qnap-compose.yaml` is the application definition that pulls
+it (Readroom behind its own Tailscale HTTPS node). `make image-qnap` still builds an arm64 archive
+that Container Station can import, for when the registry is out of reach.
 
 ## API
 
