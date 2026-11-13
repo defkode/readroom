@@ -3,9 +3,8 @@
 #
 # The image is built by GitHub Actions (.github/workflows/image.yml) and pulled from
 # the GitHub Container Registry; recreating the application fetches the newest one.
-# While the package is private, the NAS needs a ghcr.io login to pull it (a GitHub
-# token with read:packages only). To pin or go back, replace ":latest" with a
-# ":sha-<commit>" or version tag.
+# The package is public, so the NAS pulls it without a login. To pin or go back,
+# replace ":latest" with a ":sha-<commit>" or version tag.
 # On first start, open the tailscale container's log and follow the newest login
 # link within 60 seconds (the container restarts with a fresh link after that).
 #

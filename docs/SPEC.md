@@ -264,8 +264,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - **Updates are pulled, when the owner chooses:** a push to `main` runs the tests and publishes
   `ghcr.io/defkode/readroom` for arm64 and amd64 (`:latest`, and `:sha-<commit>` to go back to; a
   `v*` tag adds a version tag). On the NAS, recreating the application pulls the newest image —
-  nothing updates by itself. While the package is private the NAS pulls with a GitHub token limited
-  to `read:packages`. `make image-qnap` remains as the offline route: an archive in the classic
+  nothing updates by itself. The repository and the package are public, so the NAS pulls without a
+  login. `make image-qnap` remains as the offline route: an archive in the classic
   `docker save` layout, the only one Container Station imports. Data survives updates; migrations
   run forward only, so going back to an older image after a schema change means restoring the
   database from a snapshot.
@@ -330,8 +330,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   list proves too easy to miss.
 - Full-text search (SQLite FTS5).
 - Polish interface.
-- Letting other people try it: the images are already in a registry, but that needs a licence and a
-  decision on making the repository and the package public.
+- Letting other people try it: the repository and the images are public, but that still needs a
+  licence.
 - Leasing in the summary queue, if more than one summariser runs.
 - Before the repository goes public: move the installation specifics (tailnet address, NAS paths)
   out of this document and `CLAUDE.md`.
