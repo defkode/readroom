@@ -12,7 +12,7 @@ when behaviour changes; add new decisions to the table in SPEC §8.
 - **Preview locally, don't deploy.** During the testing phase the owner wants to see changes on a
   locally running server, and wants commits, pushes and NAS deployments only when asked.
   `make run` serves on `127.0.0.1:8090` with `./readroom.db` (git-ignored) and no token.
-  Port 8080 on the owner's machine belongs to a local LLM server.
+  Port 8080 is taken on the owner's machine.
 - **Everything must be embedded.** No fonts, scripts or styles from other hosts — the app has to work
   on a local network with no internet. A CSP header and a test enforce this; don't weaken either.
 - **The UI is a client of the REST API.** New behaviour goes into the API first; the web script calls
@@ -24,6 +24,11 @@ when behaviour changes; add new decisions to the table in SPEC §8.
 - The owner writes in Polish; code, comments, commit messages and these documents are in English.
 
 ## Deployment (QNAP, when asked)
+
+The repository is public. The specifics of the owner's installation — addresses, the deployed
+version, which model summarises — belong in their private runbook
+(`~/Documents/qnap-databox-runbook.md`, section "Readroom"), not in this repository. Update it there
+after a deployment.
 
 1. Push to `main` (when asked). Unless only documentation or `deploy/` changed,
    `.github/workflows/image.yml` runs the tests and publishes
@@ -56,8 +61,7 @@ The server never calls a model. `readroom summarize` (or any agent) reads
 `GET /api/v1/summaries/pending` and writes back with `PUT /api/v1/entries/{id}/summary`. Feeds opt in
 with their "AI summary" setting. See SPEC §4.
 
-On the owner's desktop a systemd user timer (`readroom-summarize.timer`, units in `deploy/systemd/`)
-checks the queue every 5 minutes and runs `~/.local/bin/readroom summarize` against the local llama-server (`qwen3.6-fast`). It reads
-only `READROOM_TOKEN` from `~/.config/readroom/env`. After changing the summariser, reinstall the
-binary there (`install -D bin/readroom ~/.local/bin/readroom`). Check it with
+The owner runs it from a systemd user timer on their desktop (`readroom-summarize.timer`, units and
+setup in `deploy/systemd/`). After changing the summariser, reinstall the binary there
+(`install -D bin/readroom ~/.local/bin/readroom`). Check it with
 `systemctl --user status readroom-summarize` and `journalctl --user -u readroom-summarize`.

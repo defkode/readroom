@@ -253,10 +253,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 ## 7. Deployment
 
 - **Image:** multi-stage build to a distroless static image, about 32 MB, around 16 MB of RAM idle.
-- **Current installation:** QNAP TS-233 (arm64), Container Station application `readroom` — the app
-  plus its own Tailscale node, reachable only inside the tailnet at
-  `https://readroom.tail264521.ts.net`. No port is published on the NAS. Data lives on the NAS share
-  (`/share/Container/readroom`), which is covered by the volume's snapshots.
+- **The owner's installation:** a small arm64 QNAP, as the Container Station application in
+  `deploy/qnap-compose.yaml` — the app plus its own Tailscale node, reachable only inside the tailnet
+  over HTTPS. No port is published on the NAS. Data lives on a NAS share covered by the volume's
+  snapshots. The specifics of that installation (addresses, which version runs there) are kept in
+  the owner's own runbook, not in this repository.
 - **Token on the QNAP:** set directly as `READROOM_TOKEN` in the application's YAML and kept in the
   owner's password manager. The token-file option is not used there, because a file written by the
   container is root-only on the share and File Station cannot open it. The repository's
@@ -304,17 +305,18 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
 | Display settings stored per device, not on the server | the phone and the desktop want different type and theme; the same goes for whether the desktop sidebar is hidden |
-| Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone; mirrors the existing password-vault setup |
+| Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone |
 | Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |
 | Manual updates for the first month | changes are batched during testing; a registry adds moving parts not yet needed |
 | Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
 | CI compiles the binaries on the runner and the image build only copies them in; the same Dockerfile still compiles by itself everywhere else | inside the image build every change recompiled everything for both platforms, most of a five-minute run; the runner keeps Go's build cache between runs |
+| The specifics of the owner's installation live in a private runbook, not here | the repository is public; an address or the deployed version helps nobody else and dates quickly |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-13 to the code at commit `a0cc9e3`, pulled from the registry. Later
-  commits run locally only until the application is recreated there.
+- The NAS runs whatever image was newest when its application was last recreated; later commits run
+  locally only until then.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
@@ -335,5 +337,3 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Letting other people try it: the repository and the images are public, but that still needs a
   licence.
 - Leasing in the summary queue, if more than one summariser runs.
-- Before the repository goes public: move the installation specifics (tailnet address, NAS paths)
-  out of this document and `CLAUDE.md`.
