@@ -25,7 +25,8 @@ when behaviour changes; add new decisions to the table in SPEC §8.
 
 ## Deployment (QNAP, when asked)
 
-1. Push to `main` (when asked). `.github/workflows/image.yml` runs the tests and publishes
+1. Push to `main` (when asked). Unless only documentation or `deploy/` changed,
+   `.github/workflows/image.yml` runs the tests and publishes
    `ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`; wait for the run to go green
    (`gh run watch`).
 2. Container Station → Applications → `readroom` → recreate with `deploy/qnap-compose.yaml`, which

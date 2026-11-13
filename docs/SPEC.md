@@ -261,7 +261,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   owner's password manager. The token-file option is not used there, because a file written by the
   container is root-only on the share and File Station cannot open it. The repository's
   `deploy/qnap-compose.yaml` carries a `CHANGE_ME` placeholder; the real value is never committed.
-- **Updates are pulled, when the owner chooses:** a push to `main` runs the tests and publishes
+- **Updates are pulled, when the owner chooses:** a push to `main` that changes more than
+  documentation runs the tests and publishes
   `ghcr.io/defkode/readroom` for arm64 and amd64 (`:latest`, and `:sha-<commit>` to go back to; a
   `v*` tag adds a version tag). On the NAS, recreating the application pulls the newest image —
   nothing updates by itself. The repository and the package are public, so the NAS pulls without a
@@ -307,12 +308,13 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |
 | Manual updates for the first month | changes are batched during testing; a registry adds moving parts not yet needed |
 | Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
+| CI compiles the binaries on the runner and the image build only copies them in; the same Dockerfile still compiles by itself everywhere else | inside the image build every change recompiled everything for both platforms, most of a five-minute run; the runner keeps Go's build cache between runs |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions
 
-- The NAS was updated on 2026-11-10 to the code at commit `7f057d3`. Later commits have only run locally
-  until the next manual update.
+- The NAS was updated on 2026-11-13 to the code at commit `a0cc9e3`, pulled from the registry. Later
+  commits run locally only until the application is recreated there.
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.

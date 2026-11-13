@@ -12,6 +12,8 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # A push that only touches documentation or the deployment notes changes nothing in the image.
+    paths-ignore: ['**.md', 'docs/**', 'deploy/**']
   workflow_dispatch:
 
 permissions:
@@ -31,10 +33,26 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # The Go cache is saved once per key. Keying it on this file too means a
+          # change to what is compiled here (such as the cross-builds below) gets a
+          # fresh cache that holds it.
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/image.yml
 
       # Nothing is published from a tree that does not pass.
       - run: go vet ./...
       - run: go test ./...
+
+      # Compiled here rather than inside the image build: the Go build cache above
+      # survives between runs, so only what changed is recompiled, for both targets.
+      - name: Build the binaries
+        run: |
+          for arch in arm64 amd64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch \
+              go build -trimpath -ldflags="-s -w" -o "prebuilt/out/$arch/readroom" ./cmd/readroom
+          done
+          mkdir -p prebuilt/out/data
 
       - name: Work out the image tags
         id: meta
@@ -53,16 +71,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # arm64 for the QNAP, amd64 for Proxmox. The Dockerfile cross-compiles, so
-      # neither needs emulation. No provenance attestation: it turns the manifest
-      # into an index with extra entries that older Docker engines can trip over.
+      # arm64 for the QNAP, amd64 for Proxmox. The "build" context replaces the
+      # Dockerfile's compile stage with the binaries built above, so all that is
+      # left is copying them onto the base image. No provenance attestation: it
+      # turns the manifest into an index with extra entries that older Docker
+      # engines can trip over.
       - uses: docker/build-push-action@v7
         with:
           context: .
+          build-contexts: build=prebuilt
           platforms: linux/arm64,linux/amd64
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
