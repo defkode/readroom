@@ -294,6 +294,19 @@ func TestFeedLifecycle(t *testing.T) {
 	if marked.Marked != 1 {
 		t.Fatalf("undo mark read: %+v", marked)
 	}
+	// The article page says when it was this very visit that marked the article read,
+	// which is what lets the list offer to undo it; a second visit does not.
+	for visit, want := range []bool{true, false} {
+		resp := a.call("GET", fmt.Sprintf("/entries/%d", oldID), nil, nil)
+		page, _ := io.ReadAll(resp.Body)
+		if got := bytes.Contains(page, []byte(" data-first-read")); resp.StatusCode != 200 || got != want {
+			t.Fatalf("article page, visit %d: status %d, data-first-read %v, want %v", visit+1, resp.StatusCode, got, want)
+		}
+	}
+	a.call("POST", "/api/v1/entries/mark-unread", map[string]any{"ids": []int64{oldID}}, &marked)
+	if marked.Marked != 1 {
+		t.Fatalf("undo opening an article: %+v", marked)
+	}
 	a.call("GET", "/api/v1/entries?summary=missing", nil, &list)
 	if len(list.Entries) != 1 || list.Entries[0].ID != oldID {
 		t.Fatalf("summary=missing: %+v", list.Entries)
@@ -402,6 +415,24 @@ func TestFeedLifecycle(t *testing.T) {
 			t.Errorf("app.css%s: not compressed", query)
 		}
 	}
+
+	// A local copy can be removed: the article goes back to what the feed sent, and
+	// the feed's "keep local copies" setting does not fetch it again — asking does.
+	var bare store.Entry
+	if resp := a.call("DELETE", fmt.Sprintf("/api/v1/entries/%d/preserve", newID), nil, &bare); resp.StatusCode != 200 ||
+		bare.Preserved || bare.PreservedContent != nil || strings.HasPrefix(bare.Image, "/assets/") {
+		t.Fatalf("remove local copy: status %d, entry %+v", resp.StatusCode, bare)
+	}
+	a.call("POST", "/api/v1/feeds/1/refresh", nil, nil)
+	a.call("GET", fmt.Sprintf("/api/v1/entries/%d", newID), nil, &bare)
+	if bare.Preserved || bare.PreserveError != "" {
+		t.Fatalf("a removed local copy came back with the next refresh: %+v", bare)
+	}
+	if resp := a.call("DELETE", "/api/v1/entries/999/preserve", nil, nil); resp.StatusCode != 404 {
+		t.Fatalf("remove local copy of a missing entry: got %d, want 404", resp.StatusCode)
+	}
+	a.call("POST", fmt.Sprintf("/api/v1/entries/%d/preserve", newID), nil, nil)
+	a.waitPreserved(newID)
 
 	// Deleting the feed removes its articles and their images.
 	if resp := a.call("DELETE", "/api/v1/feeds/1", nil, nil); resp.StatusCode != 204 {

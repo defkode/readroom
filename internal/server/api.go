@@ -385,6 +385,22 @@ func (s *Server) apiPreserveEntry(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 }
 
+// apiUnpreserveEntry deletes the local copy of one article and returns the
+// article as it is now.
+func (s *Server) apiUnpreserveEntry(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	if err := s.Store.RemovePreserved(r.Context(), id); err != nil {
+		s.fail(w, err)
+		return
+	}
+	e, err := s.Store.Entry(r.Context(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, e)
+}
+
 // --- AI summaries -----------------------------------------------------------
 
 // pendingSummary is one unit of work for a summarising script or agent: all it

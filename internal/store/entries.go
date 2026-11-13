@@ -693,6 +693,47 @@ WHERE id = ?`, Now(), utf8.RuneCountInString(htmlx.Flat(html)), localImage, loca
 	return tx.Commit()
 }
 
+// RemovePreserved deletes an entry's local copy, text and images, leaving the
+// article as the feed sent it. It is not fetched again under the feed's "keep
+// local copies" setting, only when asked for with RequestPreserve.
+func (s *Store) RemovePreserved(ctx context.Context, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var title, content string
+	err = tx.QueryRowContext(ctx, `SELECT e.title, b.content FROM entries e JOIN entry_bodies b ON b.entry_id = e.id WHERE e.id = ?`,
+		id).Scan(&title, &content)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	// The thumbnail and reading time go back to what the feed's own text gives.
+	_, image, length := derive(title, content)
+	for _, q := range []string{
+		`UPDATE entry_bodies SET preserved_content = NULL WHERE entry_id = ?`,
+		`DELETE FROM entry_assets WHERE entry_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM assets WHERE sha256 NOT IN (SELECT sha256 FROM entry_assets)`); err != nil {
+		return err
+	}
+	// Out of attempts: that is what keeps the next pass from making the copy again.
+	if _, err := tx.ExecContext(ctx, `
+UPDATE entries SET preserved_at = NULL, preserve_requested = 0, preserve_attempts = ?, preserve_error = '',
+       text_length = ?, image = ?
+WHERE id = ?`, maxPreserveAttempts, length, image, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) PreserveFailed(ctx context.Context, id int64, cause error) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE entries SET preserve_attempts = preserve_attempts + 1, preserve_error = ? WHERE id = ?`,

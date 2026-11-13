@@ -74,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/v1/entries/{id}", s.apiEntry)
 	api.HandleFunc("PATCH /api/v1/entries/{id}", s.apiUpdateEntry)
 	api.HandleFunc("POST /api/v1/entries/{id}/preserve", s.apiPreserveEntry)
+	api.HandleFunc("DELETE /api/v1/entries/{id}/preserve", s.apiUnpreserveEntry)
 	api.HandleFunc("GET /api/v1/entries/{id}/export", s.apiExportEntry)
 	api.HandleFunc("PUT /api/v1/entries/{id}/summary", s.apiSetSummary)
 	api.HandleFunc("DELETE /api/v1/entries/{id}/summary", s.apiClearSummary)

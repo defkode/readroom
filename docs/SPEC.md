@@ -128,6 +128,10 @@ from an image to its entries. After a migration the database is vacuumed and ana
   local copy: the readable text plus its images, stored in the database. Changing the setting back-fills
   existing articles that now qualify.
 - Any single article can also be preserved on request, whatever the feed's setting.
+- A local copy can be removed again, from the same toolbar button or row-menu item that made it: the
+  saved text and images are deleted and the article goes back to what the feed sent. It asks first,
+  because the original may be gone by then. A removed copy is not fetched again under the feed's
+  setting — only when asked for.
 - **Teaser-only feeds:** once per feed, after a fetch, the pages of its two newest articles are read
   and compared with what the feed sent. If each holds at least three times the text and a screenful
   more, the feed is marked as sending only teasers. Adding such a feed offers to keep local copies;
@@ -179,6 +183,9 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   first), so a newly added feed's articles sit together at the top instead of being scattered among
   older ones; All and Starred are an archive, by publication date. Opening an article marks it read and records when (`read_at`); from the second
   visit on, the article shows how long ago that was under its title, next to "Mark as unread".
+  Back on a list, a message says "Marked as read" with Undo for a few seconds — for every article
+  first read on the way, when several were stepped through — so a mistaken tap, or the last unread
+  article of a feed, can be put back without finding it again.
 - Lists and articles show an estimated reading time (about 1,400 characters a minute, from the best
   text available: the local copy if there is one, else what the feed sent, which may be only a teaser).
 - A row marks what the owner did to its article with the same filled, accent-coloured icons as the
@@ -279,6 +286,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | One summariser at a time, no leasing | simplest thing that works for one person; add leasing if several workers are ever needed |
 | Excerpt from the feed's teaser, else the first real paragraph, else the image caption | every article shows something useful without waiting for a model |
 | Bulk "mark as read" is a labelled menu item with Undo, not a bare icon with a confirmation | a lone check mark did not say it meant everything; confirmations get clicked through, undo actually recovers a slip |
+| Opening an article still marks it read at once, and the list it leads back to offers Undo | waiting or scrolling before marking would make "read" a guess; the slip is only noticed back on the list, where the row is already gone, so that is where the way back belongs |
+| Removing a local copy asks for confirmation instead of offering Undo, and marks the article as out of fetch attempts | undo would mean fetching the page again, which is exactly what may no longer work; and without the mark a feed that keeps local copies would quietly bring it back on the next pass |
 | "Mark this and older as read" instead of checkboxes for partial marking | one tap closes the rest of a list once nothing below is of interest; multi-select is fiddly on a phone |
 | Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
@@ -297,6 +306,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone; mirrors the existing password-vault setup |
 | Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |
 | Manual updates for the first month | changes are batched during testing; a registry adds moving parts not yet needed |
+| Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions
@@ -306,7 +316,6 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
-| Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
 - Summaries are produced only while the owner's desktop is on: the scheduled job and the model run there,
   not on the NAS.
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on

@@ -86,10 +86,40 @@ const markRead = async (el, body) => {
   try { sessionStorage.setItem(undoKey, JSON.stringify({ ids, at: Date.now() })); } catch { /* no undo then */ }
   location.reload();
 };
+
+// Opening an article marks it read, and it is gone from Unread on the way back.
+// The article notes that it was this visit that marked it; the next page that is
+// not an article offers to take that back, for every article read on the way.
+const openedKey = 'readroom-opened';
+const opened = () => {
+  try { return JSON.parse(sessionStorage.getItem(openedKey)) || []; } catch { return []; }
+};
+const setOpened = (ids) => {
+  try {
+    if (ids.length) sessionStorage.setItem(openedKey, JSON.stringify(ids));
+    else sessionStorage.removeItem(openedKey);
+  } catch { /* no undo then */ }
+};
+const forgetOpened = (id) => setOpened(opened().filter((other) => other !== +id));
+const offerUnread = () => {
+  const ids = opened();
+  if (!ids.length) return;
+  setOpened([]);
+  toast(ids.length === 1 ? 'Marked as read' : `Marked ${ids.length} as read`, { label: 'Undo', run: async () => {
+    await api('POST', '/entries/mark-unread', { ids });
+    location.reload();
+  } });
+};
+const firstRead = document.querySelector('.article[data-first-read]');
+if (firstRead) setOpened([...new Set([...opened(), +firstRead.dataset.id])]);
+
 try {
   const undo = JSON.parse(sessionStorage.getItem(undoKey));
   sessionStorage.removeItem(undoKey);
-  if (undo && Date.now() - undo.at < 5000) {
+  if (document.querySelector('.article[data-id]')) { /* still reading: the list will offer it */ }
+  else if (!(undo && Date.now() - undo.at < 5000)) offerUnread();
+  else {
+    setOpened([]); // one message at a time: the newer action is the one on offer
     if (undo.hidden) {
       toast('Hidden', { label: 'Undo', run: async () => {
         await api('PATCH', `/entries/${undo.hidden}`, { hidden: false });
@@ -115,6 +145,12 @@ const keepCopy = async (id) => {
     if (e.preserve_error) { toast('Could not save: ' + e.preserve_error); return false; }
   }
   return false;
+};
+
+// Deleting a copy cannot be taken back if the original has since gone, so it asks first.
+const dropCopy = async (id) => {
+  if (!confirm('Remove the local copy of this article?\n\nThe text and images saved here are deleted. The article stays, as the feed sent it.')) return null;
+  return api('DELETE', `/entries/${id}/preserve`); // the article as it is now
 };
 
 // The notice about feeds that stopped updating can be put away on this device;
@@ -150,10 +186,14 @@ const actions = {
   },
   async 'mark-unread'(el) {
     await api('PATCH', `/entries/${el.dataset.id}`, { read: false });
+    forgetOpened(el.dataset.id);
     history.length > 1 ? history.back() : (location.href = '/');
   },
   async preserve(el) {
     if (await keepCopy(el.dataset.id)) location.reload();
+  },
+  async unpreserve(el) {
+    if (await dropCopy(el.dataset.id)) location.reload();
   },
   async 'row-lists'(el) {
     const id = el.dataset.id;
@@ -176,6 +216,16 @@ const actions = {
   'row-preserve'(el) {
     const row = rowOf(el);
     closeMenu(el);
+    if (row.classList.contains('kept')) {
+      return dropCopy(el.dataset.id).then((entry) => {
+        if (!entry) return;
+        row.classList.remove('kept');
+        // Its thumbnail was one of the deleted images.
+        const thumb = row.querySelector('.thumb');
+        if (thumb) entry.image ? (thumb.src = entry.image) : thumb.remove();
+        toast('Local copy removed');
+      });
+    }
     keepCopy(el.dataset.id).then((kept) => {
       if (!kept) return;
       row.classList.add('kept');
@@ -286,8 +336,7 @@ const actions = {
       label('row-read', row.classList.contains('read') ? 'Mark as unread' : 'Mark as read');
       label('row-star', row.classList.contains('starred') ? 'Remove star' : 'Star');
       const kept = row.classList.contains('kept');
-      label('row-preserve', kept ? 'Saved locally' : 'Keep a local copy');
-      menu.querySelector('[data-action="row-preserve"]').disabled = kept;
+      label('row-preserve', kept ? 'Remove local copy' : 'Keep a local copy');
     }
     menu.showPopover();
     const at = el.getBoundingClientRect();
