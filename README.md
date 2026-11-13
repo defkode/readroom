@@ -112,3 +112,8 @@ internal/server     REST API, web app (templates/, static/)
 ```
 
 `make test` runs the suite (toolchain in Docker; Go is not needed on the host).
+
+## Licence
+
+[MIT](LICENSE). The bundled Literata font is under the SIL Open Font License
+(`internal/server/static/fonts/OFL.txt`).

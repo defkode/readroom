@@ -311,6 +311,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
 | CI compiles the binaries on the runner and the image build only copies them in; the same Dockerfile still compiles by itself everywhere else | inside the image build every change recompiled everything for both platforms, most of a five-minute run; the runner keeps Go's build cache between runs |
 | The specifics of the owner's installation live in a private runbook, not here | the repository is public; an address or the deployed version helps nobody else and dates quickly |
+| MIT licence | the repository is public, and without a licence nobody else may use the code; MIT is the simplest permissive one for a small personal tool. The bundled font keeps its own Open Font License |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions
@@ -334,6 +335,4 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   list proves too easy to miss.
 - Full-text search (SQLite FTS5).
 - Polish interface.
-- Letting other people try it: the repository and the images are public, but that still needs a
-  licence.
 - Leasing in the summary queue, if more than one summariser runs.
