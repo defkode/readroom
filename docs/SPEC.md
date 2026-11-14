@@ -90,6 +90,8 @@ from an image to its entries. After a migration the database is vacuumed and ana
 - Adding a feed says how much of what it already holds starts unread: the last 30 days (the default,
   and never fewer than the 3 newest), the latest 10, everything, or nothing. The rest arrives already
   read — in the archive, not in the way. Imported feeds get the default.
+- A feed that was added is confirmed: a message names it and says how many articles it brought, and
+  its row in the list is briefly highlighted and scrolled into view.
 - Each feed is polled every `READROOM_INTERVAL` (default 30 minutes) using conditional requests; a
   background pass runs every minute and handles whatever is due.
 - Per feed, the owner can set: **name**, **category**, **keep local copies** with an optional

@@ -369,6 +369,8 @@ const submits = {
         confirm(`"${feed.title}" sends only a teaser of each article.\n\nKeep local copies, so the full text and images are here?`)) {
       await api('PATCH', `/feeds/${feed.id}`, { preserve: true });
     }
+    // The reload shows the feed in its place; say so once the page is back.
+    try { sessionStorage.setItem(addedKey, JSON.stringify({ id: feed.id, title: feed.title, total: feed.total, at: Date.now() })); } catch { /* no confirmation then */ }
     location.reload();
   },
   async 'save-feed'(form) {
@@ -389,6 +391,23 @@ const submits = {
     location.reload();
   },
 };
+
+// After adding a feed the page reloads: confirm it and point at the new row.
+const addedKey = 'readroom-added-feed';
+try {
+  const added = JSON.parse(sessionStorage.getItem(addedKey));
+  sessionStorage.removeItem(addedKey);
+  if (added && Date.now() - added.at < 5000) {
+    const articles = added.total === 1 ? '1 article' : `${added.total || 0} articles`;
+    toast(`Added “${added.title}” · ${articles}`);
+    // A failing feed is listed twice; the last match is its place among the categories.
+    const row = [...document.querySelectorAll(`.rowbtn[data-action="edit-feed"][data-id="${added.id}"]`)].pop();
+    if (row) {
+      row.closest('li').classList.add('fresh');
+      row.scrollIntoView({ block: 'center' });
+    }
+  }
+} catch { /* storage unavailable */ }
 
 const run = async (el, fn) => {
   try { await busy(el, () => fn(el)); } catch (err) { toast(err.message); }
