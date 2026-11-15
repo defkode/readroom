@@ -243,6 +243,8 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 /* A read title is lighter, not grey: it must still stand apart from the feed name above and the snippet below. */
 .entry.read .title { font-weight: 500; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
 .entry .snippet { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: .9rem; color: var(--muted); }
+/* An AI summary is there to be read in the list: a click on it shows all of it, in place. */
+.entry.open .snippet.whole { display: block; overflow: visible; color: var(--text); white-space: pre-line; }
 .ai { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; padding: 0 5px 0 3px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: .68rem; font-weight: 700; letter-spacing: .03em; vertical-align: 1px; }
 .ai .icon { width: 12px; height: 12px; }
 .tag .icon { width: 11px; height: 11px; vertical-align: -1px; margin-right: 2px; }
@@ -383,6 +385,13 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .article .audio .pulse { animation: none; } }
 .summary { margin: 22px 0; padding: 14px 16px; border-radius: var(--radius); background: var(--accent-soft); }
+.summary > summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; color: var(--accent); }
+.summary > summary::-webkit-details-marker { display: none; }
+.summary > summary h2 { flex: 1; margin-bottom: 0; }
+.summary[open] > summary { margin-bottom: 6px; }
+.summary > summary > .icon { width: 16px; height: 16px; transition: transform .15s; }
+.summary[open] > summary > .icon { transform: rotate(90deg); }
+.summary > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 .summary h2 { margin-bottom: 6px; font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .summary h2 small { text-transform: none; letter-spacing: 0; }
 .summary p { font-family: var(--read-font); font-size: calc(var(--read-size) * .92); line-height: 1.55; }

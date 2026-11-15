@@ -167,6 +167,11 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - The server never calls a model. A summary is written from outside, through the API.
 - A summary always takes precedence over the excerpt wherever one exists, and is marked with an AI
   badge (in the list and in the article, with the model's name).
+- In a list a summary is cut to three lines; a click on it (or `e` on the selected row) shows all of
+  it in place, and again folds it. That neither opens the article nor marks it read — the summary is
+  there to decide whether to. The rest of the row still opens the article.
+- In the article the summary folds away with its heading; whether it is folded is remembered per
+  device, so it stays that way for every article.
 - **Queue:** `GET /api/v1/summaries/pending` returns the articles that need a summary — the feed has
   *AI summary* on, there is no summary yet, and the text is at least `READROOM_SUMMARY_MIN_CHARS`
   (default 1500) long. If the feed also keeps local copies, an article is queued only once its full
@@ -233,7 +238,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Page changes are animated by the browser (cross-document view transitions): a quick cross-fade, with
   the content sliding forward into an article or the next one and back to the list or the previous one.
   Browsers without them, and reduced-motion settings, simply switch pages.
-- Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `/` search) and in an
+- Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `e` whole summary, `/` search) and in an
   article (`j`/`k` next and previous, `u` back, `m` unread, `s` star, `v` original); `?` lists them.
 - Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
 - **Hiding:** an article can be hidden for good — from its row menu, from the article, or with `h` —
@@ -345,7 +350,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
-| Categories fold with plain `<details>`, and a few lines of script remember which | the browser already does the folding, with keyboard and accessibility; but every click loads a new page, which would unfold everything again |
+| Categories and the article's AI summary fold with plain `<details>`, and a few lines of script (`folds.js`) remember which | the browser already does the folding, with keyboard and accessibility; but every click loads a new page, which would unfold everything again |
 | Display settings stored per device, not on the server | the phone and the desktop want different type and theme; the same goes for whether the desktop sidebar is hidden |
 | Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone |
 | Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |

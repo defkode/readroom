@@ -50,10 +50,12 @@
     {{end}}
   </section>
   {{if .Paragraph}}
-  <section class="summary">
-    <h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>
+  {{/* Folds away for those who would rather read the article first; remembered per device. */}}
+  <details class="summary" open data-fold="summary">
+    <summary><h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>{{icon "chevron"}}</summary>
     {{range .Paragraph}}<p>{{.}}</p>{{end}}
-  </section>
+  </details>
+  <script src="{{static "folds.js"}}"></script>
   {{end}}
   <div class="content">{{html .Entry.Body}}</div>
   {{/* Filled in by the script from the list this article was opened from. */}}

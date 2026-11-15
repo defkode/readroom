@@ -58,7 +58,7 @@
     <span class="body">
       <span class="meta"><span class="feed">{{.FeedTitle}}</span>{{if .ReadingMinutes}}<span class="mins">{{.ReadingMinutes}} min</span>{{end}}<span class="flags"><span class="listed">{{icon "lists"}}</span><span class="starred">{{icon "star"}}</span><span class="kept">{{icon "archive"}}</span></span><time datetime="{{.PublishedAt}}">{{ago .PublishedAt}}</time></span>
       <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
-      {{if .Summary}}<span class="snippet"><span class="ai" title="Summary written by AI{{if .SummaryModel}} ({{.SummaryModel}}){{end}}">{{icon "ai"}}AI</span>{{.Summary}}</span>
+      {{if .Summary}}<span class="snippet whole" title="Show the whole summary"><span class="ai" title="Summary written by AI{{if .SummaryModel}} ({{.SummaryModel}}){{end}}">{{icon "ai"}}AI</span>{{.Summary}}</span>
       {{else if .Excerpt}}<span class="snippet">{{.Excerpt}}</span>{{end}}
     </span>
   </a>

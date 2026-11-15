@@ -73,7 +73,7 @@ const refreshCounts = async () => {
     const from = fresh.querySelector(part), to = document.querySelector(part);
     if (from && to) to.replaceWith(from);
   }
-  readroomNav.apply(); // the fresh copy arrives with every category unfolded
+  readroomFolds.apply(); // the fresh copy arrives with every category unfolded
 };
 
 // Marking many articles reloads the list; the offer to undo is carried across the reload.
@@ -535,6 +535,24 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#entries .entry > a')) rememberList();
 });
 
+// An AI summary in a list is cut to three lines. A click on it shows the whole
+// of it in place, and again folds it, without opening the article or marking it read;
+// the rest of the row still opens the article.
+const toggleSummary = (row) => {
+  const snippet = row.querySelector('.snippet.whole');
+  if (!snippet) return false;
+  const open = row.classList.toggle('open');
+  snippet.title = open ? 'Fold the summary' : 'Show the whole summary';
+  return true;
+};
+document.addEventListener('click', (e) => {
+  if (e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // opening in a new tab still works
+  const snippet = e.target.closest('#entries .entry .snippet.whole');
+  if (!snippet || getSelection().toString()) return;
+  e.preventDefault();
+  toggleSummary(snippet.closest('.entry'));
+});
+
 const article = document.querySelector('.article[data-id]');
 const neighbours = { prev: null, next: null };
 const showNeighbours = async () => {
@@ -663,6 +681,7 @@ const listKeys = {
   Enter: () => { const row = cursor(); if (row) openArticle(row.querySelector('a').href); },
   m: () => { const row = cursor(); if (row) return setRead(row, !row.classList.contains('read')); },
   s: () => { const row = cursor(); if (row) return setStar(row, !row.classList.contains('starred')); },
+  e: () => { const row = cursor(); if (row && !toggleSummary(row)) toast('No AI summary for this article'); },
   h: () => {
     const row = cursor();
     if (!row) return;

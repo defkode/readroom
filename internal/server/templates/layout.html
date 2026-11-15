@@ -96,6 +96,7 @@
     <dt><kbd>Enter</kbd> <kbd>o</kbd></dt><dd>Open the selected article</dd>
     <dt><kbd>m</kbd></dt><dd>Mark as read / unread</dd>
     <dt><kbd>s</kbd></dt><dd>Star / remove star</dd>
+    <dt><kbd>e</kbd></dt><dd>Show the whole AI summary / fold it</dd>
     <dt><kbd>h</kbd></dt><dd>Hide the article for good</dd>
     <dt><kbd>/</kbd></dt><dd>Search</dd>
   </dl>
@@ -192,7 +193,7 @@
   {{end}}
   {{range .Groups}}
   {{/* A category folds away; the name still leads to its articles, the rest of the line folds. */}}
-  <details open data-category="{{.Category}}">
+  <details open data-fold="category:{{.Category}}">
     <summary><h2><a href="/?category={{.Category}}" class="{{if eq $.Active (printf "cat:%s" .Category)}}on{{end}}">{{if .Category}}{{.Category}}{{else}}Uncategorised{{end}}</a></h2>{{if .Unread}}<b>{{.Unread}}</b>{{end}}{{icon "chevron"}}</summary>
     <ul class="group">
       {{range .Feeds}}<li><a href="/?feed_id={{.ID}}" class="{{if eq $.Active (printf "feed:%d" .ID)}}on{{end}}{{if .Broken}} err{{end}}">{{icon "rss"}}<span>{{.Title}}</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a></li>{{end}}
@@ -213,7 +214,7 @@
   </form>
 </nav>
 {{/* Folds the categories this device keeps folded, before the page is painted. */}}
-<script src="{{static "nav.js"}}"></script>
+<script src="{{static "folds.js"}}"></script>
 {{end}}
 
 {{/* The feed settings sheet, shared by Manage feeds and a feed's own list; "." is the category names. */}}
