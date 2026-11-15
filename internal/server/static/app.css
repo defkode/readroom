@@ -14,7 +14,7 @@
 
 /* Themes. Light is the default; dark applies when the system asks for it and no
    theme was chosen on this device, or when chosen explicitly. Light and dark are
-   neutral greys with a blue accent, after macOS; sepia is the warm one. Colours
+   neutral greys with a blue accent, after macOS. Colours
    are kept low-contrast on purpose: no pure white, no pure black. */
 :root {
   --bg: #f1f1f3;
@@ -42,19 +42,6 @@
   --read-width: 680px;
   --read-align: start;
   color-scheme: light;
-}
-:root[data-theme="sepia"] {
-  --bg: #eadfc8;
-  --surface: #f6ecd7;
-  --surface-2: #dfd2b8;
-  --text: #45382a;
-  --muted: #7c6a54;
-  --faint: #a8967c;
-  --sep: rgba(80, 60, 30, .16);
-  --accent: #96502a;
-  --accent-soft: rgba(150, 80, 42, .13);
-  --danger: #b3261e;
-  --bar: rgba(234, 223, 200, .86);
 }
 :root[data-theme="dark"] {
   --bg: #1c1c1e;
@@ -336,13 +323,12 @@ input[type=checkbox]:checked::after { transform: translateX(20px); }
 .choices button[aria-pressed=true] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 .choices .f-literata { font-family: Literata, serif; }
 .choices .f-serif { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
-.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .swatches button { display: grid; gap: 4px; justify-items: center; padding: 10px 4px 8px; border: 2px solid transparent; border-radius: 12px; background: var(--surface); font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; }
 .swatches button[aria-pressed=true] { border-color: var(--accent); color: var(--text); }
 .swatches i { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(128, 128, 128, .35); font: 600 15px/32px Literata, serif; text-align: center; }
 .sw-auto { background: linear-gradient(135deg, #fbfbfc 50%, #262628 50%); color: transparent; }
 .sw-light { background: #fbfbfc; color: #242426; }
-.sw-sepia { background: #f6ecd7; color: #45382a; }
 .sw-dark { background: #262628; color: #dcdce0; }
 .stepper { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; border-radius: 10px; background: var(--surface-2); }
 .stepper button { height: 40px; border: 0; background: none; font-family: Literata, serif; color: var(--text); cursor: pointer; }

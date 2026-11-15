@@ -264,7 +264,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - A category in the feed list (the sidebar, and the Feeds tab on a phone) folds away with the arrow on
   its line; its name still leads to the category's articles. Folded, it shows the category's unread
   count. Everything starts unfolded, and which ones are folded is remembered per device.
-- **Themes:** light and dark in neutral greys with a blue accent, after macOS, and a warm sepia. The default follows
+- **Themes:** light and dark in neutral greys with a blue accent, after macOS; no others. The default follows
   the system. Colours are deliberately low-contrast with a muted accent — the first version (pure
   black, saturated orange) was hard to read on a phone.
 - **Display settings**, Kindle-style, from the "Aa" button in an article or "Display" in the menu:
@@ -334,7 +334,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | "Mark this and older as read" instead of checkboxes for partial marking | one tap closes the rest of a list once nothing below is of interest; multi-select is fiddly on a phone |
 | Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
-| Light and dark themes are neutral greys with a blue accent; only sepia is warm | the owner disliked the brown, paper-like palette in both modes and prefers macOS-style greys |
+| Light and dark themes are neutral greys with a blue accent; the warm sepia theme was removed (2026-11-15) | the owner disliked the brown, paper-like palette and prefers macOS-style greys; a device that had sepia chosen falls back to following the system |
 | Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on the NAS every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
 | A feed is reported as broken only after 3 failed fetches in a row, on the Unread list rather than only in Manage feeds | one timeout is not news; and the place the owner looks every day is the only place a silent failure gets noticed |
 | Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |

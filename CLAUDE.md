@@ -17,7 +17,7 @@ when behaviour changes; add new decisions to the table in SPEC §8.
   on a local network with no internet. A CSP header and a test enforce this; don't weaken either.
 - **The UI is a client of the REST API.** New behaviour goes into the API first; the web script calls
   it. No frontend framework, no build step.
-- **Check the UI in a browser** at phone and desktop widths, in light, sepia and dark, before calling a
+- **Check the UI in a browser** at phone and desktop widths, in light and dark, before calling a
   visual change done. The owner reads mostly on a phone and found high-contrast colours tiring.
 - Schema changes are forward-only migrations appended to `migrations` in `internal/store/store.go`.
   Derived columns are recomputed by `backfillText` when a migration resets `text_length` to -1.

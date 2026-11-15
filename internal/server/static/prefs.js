@@ -16,7 +16,7 @@
 
   const clean = (p) => {
     const out = Object.assign({}, DEFAULTS, p);
-    if (!['auto', 'light', 'sepia', 'dark'].includes(out.theme)) out.theme = DEFAULTS.theme;
+    if (!['auto', 'light', 'dark'].includes(out.theme)) out.theme = DEFAULTS.theme;
     if (!FONTS[out.font]) out.font = DEFAULTS.font;
     if (!LEADING[out.leading]) out.leading = DEFAULTS.leading;
     if (!WIDTH[out.width]) out.width = DEFAULTS.width;
