@@ -250,15 +250,16 @@ type entriesPage struct {
 	Query      string
 	FeedID     int64
 	Category   *string
-	ListID     int64       // set in a readlist, where each row offers removal
-	CanMark    bool        // bulk "mark as read" applies here: a feed, a category or everything
-	Unread     int64       // how many articles "mark all as read" would mark
-	Feed       *store.Feed // set when the list is one feed, whose settings can be opened here
-	Notice     bool        // the main Unread list: the place to say that feeds have stopped updating
-	HiddenView bool        // the list of hidden articles, whose rows offer to show them again
-	ByArrival  bool        // the list is in arrival order, which "this and older" must follow
-	Categories []string    // for the feed settings sheet
-	Lists      listsSheet  // for the readlists sheet
+	ListID     int64           // set in a readlist, where each row offers removal
+	CanMark    bool            // bulk "mark as read" applies here: a feed, a category or everything
+	Unread     int64           // how many articles "mark all as read" would mark
+	Feed       *store.Feed     // set when the list is one feed, whose settings can be opened here
+	List       *store.Readlist // set when the list is one readlist, which can be renamed, exported and deleted here
+	Notice     bool            // the main Unread list: the place to say that feeds have stopped updating
+	HiddenView bool            // the list of hidden articles, whose rows offer to show them again
+	ByArrival  bool            // the list is in arrival order, which "this and older" must follow
+	Categories []string        // for the feed settings sheet
+	Lists      listsSheet      // for the readlists sheet
 	Empty      string
 }
 
@@ -266,10 +267,11 @@ type entriesPage struct {
 // how the page around them is titled and marked.
 type listing struct {
 	filter store.EntryFilter
-	view   string      // unread, all, starred or hidden
-	scope  url.Values  // what narrows the list (a feed, a category or a readlist), as query parameters
-	feed   *store.Feed // set when the scope is one feed
-	empty  string      // what to say when nothing matches
+	view   string          // unread, all, starred or hidden
+	scope  url.Values      // what narrows the list (a feed, a category or a readlist), as query parameters
+	feed   *store.Feed     // set when the scope is one feed
+	list   *store.Readlist // set when the scope is one readlist
+	empty  string          // what to say when nothing matches
 
 	title, tab, active string // for the shell: page title, tab-bar item, sidebar row
 }
@@ -303,7 +305,7 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 			return nil, err
 		}
 		id := strconv.FormatInt(list.ID, 10)
-		l.title, l.tab, l.active = list.Name, "lists", "list:"+id
+		l.list, l.title, l.tab, l.active = list, list.Name, "lists", "list:"+id
 		l.scope.Set("readlist_id", id)
 		if l.view == "" {
 			l.view = "all"
@@ -343,7 +345,7 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 	case "hidden":
 		// What the owner put away, across everything; the one place it can be brought back.
 		*f = store.EntryFilter{Hidden: true, Query: f.Query, Before: f.Before, Limit: f.Limit}
-		l.scope, l.feed = url.Values{}, nil
+		l.scope, l.feed, l.list = url.Values{}, nil, nil
 		l.empty = "Nothing is hidden."
 		l.title, l.tab, l.active = "Hidden articles", "manage", "hidden"
 	default:
@@ -399,7 +401,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := entriesPage{Entries: entries, View: l.view, Query: f.Query, Hidden: map[string]string{"view": l.view},
-		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: l.empty, Feed: l.feed,
+		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: l.empty, Feed: l.feed, List: l.list,
 		Notice: !l.scoped() && l.view == "unread" && f.Query == "", HiddenView: l.view == "hidden", ByArrival: f.ByArrival,
 		// Bulk marking covers a whole feed, category or everything, so it is not offered
 		// where the list shows a narrower selection (a readlist, starred, hidden, a search).

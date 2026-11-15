@@ -242,7 +242,8 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   article's toolbar, always in the same order: in a readlist, starred, local copy kept, and headphones when it has a recording.
 - Every row has a ⋮ menu: mark as read or unread, add to a readlist, star, keep a local copy, "Mark this and older as read", and in a readlist
   "Remove from readlist". The list's own ⋮ menu has "Mark all N as read" and, for a
-  single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
+  single feed, "Feed settings" (the same sheet as in Manage feeds); for a readlist it has "Readlist
+  settings" (a sheet to rename or delete it) and its EPUB and Markdown exports. Both bulk actions apply to the
   current feed or category (or everything), are not offered in a readlist, in Starred or in search
   results, and can be undone from the message that follows for a few seconds.
 - An article ends with links to the previous and next article of the list it was opened from (the
@@ -253,6 +254,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Keyboard shortcuts on a list (`j`/`k` select, `Enter` open, `m` read, `s` star, `e` whole summary, `/` search) and in an
   article (`j`/`k` next and previous, `u` back, `m` unread, `s` star, `v` original); `?` lists them.
 - Readlists: create, rename, delete; add or remove articles (from the article or from the row menu).
+  Renaming is in the readlist's own ⋮ menu; Manage readlists creates, exports and deletes.
 - **Hiding:** an article can be hidden for good — from its row menu, from the article, or with `h` —
   to keep the collection to what is worth keeping. A hidden article is in no list, search, count,
   readlist, export or summary queue, and a refresh does not bring it back. Nothing else about it

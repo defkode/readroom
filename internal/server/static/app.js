@@ -391,10 +391,21 @@ window.readroomBoot = (signal, soft) => {
       if (count) count.textContent = Math.max(0, count.textContent - 1);
       toast('Removed from readlist');
     },
+    'edit-list'(el) {
+      closeMenu(el);
+      const dialog = document.getElementById('list-dialog');
+      const form = dialog.querySelector('form');
+      form.dataset.id = el.dataset.id;
+      form.dataset.name = form.name.value = el.dataset.name;
+      dialog.showModal();
+    },
+    // From Manage readlists the button names the list; in a list's own settings its form does.
     async 'delete-list'(el) {
-      if (!confirm(`Delete readlist "${el.dataset.name}"? Its articles are kept.`)) return;
-      await api('DELETE', `/readlists/${el.dataset.id}`);
-      readroomNav.reload();
+      const { id, name } = (el.closest('#list-dialog form') || el).dataset;
+      if (!confirm(`Delete readlist "${name}"? Its articles are kept.`)) return;
+      await api('DELETE', `/readlists/${id}`);
+      // Deleted from the readlist's own list, there is nothing left here to show.
+      new URLSearchParams(location.search).has('readlist_id') ? readroomNav.go('/readlists') : readroomNav.reload();
     },
   };
 
@@ -420,6 +431,10 @@ window.readroomBoot = (signal, soft) => {
         ai_summary: form.ai.checked,
         keep_days: +form.keep.value,
       });
+      readroomNav.reload();
+    },
+    async 'save-list'(form) {
+      await api('PATCH', `/readlists/${form.dataset.id}`, { name: form.name.value });
       readroomNav.reload();
     },
     async 'create-list'(form) {
@@ -451,6 +466,9 @@ window.readroomBoot = (signal, soft) => {
   };
 
   on(document, 'click', (e) => {
+    // A download from a menu leaves the page where it is, so the menu has to go by itself.
+    const download = e.target.closest('[popover] a[download]');
+    if (download) closeMenu(download);
     const el = e.target.closest('button[data-action], a[data-action]');
     if (!el || !actions[el.dataset.action]) return;
     e.preventDefault();

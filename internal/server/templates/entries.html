@@ -1,4 +1,4 @@
-{{define "actions"}}{{with .Page}}{{if or .CanMark .Feed}}
+{{define "actions"}}{{with .Page}}{{if or .CanMark .Feed .List}}
 <button class="iconbtn" data-action="open-menu" data-menu="page-menu" aria-label="List actions" aria-haspopup="menu" title="More">{{icon "more"}}</button>
 {{end}}{{end}}{{end}}
 
@@ -40,14 +40,30 @@
   {{else}}<button role="menuitem" data-action="row-hide">{{icon "hide"}}<span>Hide</span></button>{{end}}
 </div>
 {{template "lists-dialog" .Lists}}
-{{if or .CanMark .Feed}}
+{{if or .CanMark .Feed .List}}
 <div id="page-menu" class="menu" popover role="menu">
   {{if .CanMark}}<button role="menuitem" data-action="mark-all-read" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if not .Unread}} disabled{{end}}>{{icon "checks"}}<span>{{if .Unread}}Mark all {{.Unread}} as read{{else}}Nothing unread here{{end}}</span></button>{{end}}
   {{with .Feed}}<button role="menuitem" data-action="edit-feed"
     {{template "feed-attrs" .}}>{{icon "manage"}}<span>Feed settings</span></button>{{end}}
+  {{with .List}}<button role="menuitem" data-action="edit-list" data-id="{{.ID}}" data-name="{{.Name}}">{{icon "manage"}}<span>Readlist settings</span></button>
+  <a role="menuitem" href="/api/v1/readlists/{{.ID}}/export?format=epub" download>{{icon "download"}}<span>Export as EPUB</span></a>
+  <a role="menuitem" href="/api/v1/readlists/{{.ID}}/export?format=md" download>{{icon "download"}}<span>Export as Markdown</span></a>{{end}}
 </div>
 {{end}}
 {{if .Feed}}{{template "feed-dialog" .Categories}}{{end}}
+{{if .List}}
+<dialog id="list-dialog" class="sheet">
+  <form data-action="save-list">
+    <h2>Readlist settings</h2>
+    <label>Name<input name="name" required autocomplete="off"></label>
+    <div class="buttons">
+      <button class="btn" value="save">Save</button>
+      <button class="btn quiet danger" type="button" data-action="delete-list">Delete</button>
+      <button class="btn quiet" type="button" data-action="close-dialog">Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
 {{end}}{{end}}
 
 {{define "items"}}
