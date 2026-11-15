@@ -238,7 +238,7 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .entry .meta time { flex: none; margin-left: auto; }
 .entry .meta .flags + time { margin-left: 0; }
 /* With no marks to show, the hidden marks must not keep the date from the right edge. */
-.entry:not(.starred):not(.listed):not(.kept) .meta time { margin-left: auto; }
+.entry:not(.starred):not(.listed):not(.kept):not(.spoken) .meta time { margin-left: auto; }
 .entry .title { font-size: 1.02rem; font-weight: 650; line-height: 1.28; letter-spacing: -.01em; text-wrap: pretty; }
 /* A read title is lighter, not grey: it must still stand apart from the feed name above and the snippet below. */
 .entry.read .title { font-weight: 500; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
@@ -253,11 +253,12 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 /* What the owner did to an article is marked the same way everywhere: accent colour, filled.
    In a row the marks sit on the meta line, before the date, so they cost no line of their own. */
 .entry .flags { display: flex; align-items: center; gap: 5px; flex: none; margin-left: auto; color: var(--accent); }
-.entry:not(.starred):not(.listed):not(.kept) .flags, .entry:not(.starred) .flags .starred,
-.entry:not(.listed) .flags .listed, .entry:not(.kept) .flags .kept { display: none; }
+.entry:not(.starred):not(.listed):not(.kept):not(.spoken) .flags, .entry:not(.starred) .flags .starred,
+.entry:not(.listed) .flags .listed, .entry:not(.kept) .flags .kept, .entry:not(.spoken) .flags .spoken { display: none; }
 .entry .flags span { display: inline-flex; }
 .entry .flags .icon { width: 12px; height: 12px; }
 .entry .flags .icon { fill: currentColor; }
+.entry .flags .spoken .icon { fill: none; stroke-width: 2.6; } /* headphones are an outline: filled, they are a blob */
 .more { display: grid; padding: 8px; }
 .empty { margin: 18vh 24px 0; text-align: center; color: var(--muted); text-wrap: balance; }
 

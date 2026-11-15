@@ -227,7 +227,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Lists and articles show an estimated reading time (about 1,400 characters a minute, from the best
   text available: the local copy if there is one, else what the feed sent, which may be only a teaser).
 - A row marks what the owner did to its article with the same filled, accent-coloured icons as the
-  article's toolbar, always in the same order: in a readlist, starred, local copy kept.
+  article's toolbar, always in the same order: in a readlist, starred, local copy kept, and headphones when it has a recording.
 - Every row has a ⋮ menu: mark as read or unread, add to a readlist, star, keep a local copy, "Mark this and older as read", and in a readlist
   "Remove from readlist". The list's own ⋮ menu has "Mark all N as read" and, for a
   single feed, "Feed settings" (the same sheet as in Manage feeds). Both bulk actions apply to the
@@ -387,4 +387,4 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Full-text search (SQLite FTS5).
 - Polish interface.
 - Leasing in the summary queue, if more than one summariser runs.
-- Marking in lists which articles have a recording; a playlist of recordings.
+- A playlist of recordings.
