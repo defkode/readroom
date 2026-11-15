@@ -73,6 +73,7 @@ const refreshCounts = async () => {
     const from = fresh.querySelector(part), to = document.querySelector(part);
     if (from && to) to.replaceWith(from);
   }
+  readroomNav.apply(); // the fresh copy arrives with every category unfolded
 };
 
 // Marking many articles reloads the list; the offer to undo is carried across the reload.
