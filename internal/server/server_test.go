@@ -203,14 +203,18 @@ func TestFeedLifecycle(t *testing.T) {
 		t.Fatalf("text_length after preservation: %d", e.TextLength)
 	}
 
-	// The summary queue is empty until the feed opts in.
+	// A new feed has AI summaries on; with them off, nothing of it is queued.
+	if !feed.AISummary {
+		t.Fatal("ai_summary is not on for a new feed")
+	}
+	a.call("PATCH", "/api/v1/feeds/1", map[string]any{"ai_summary": false}, &feed)
 	var queue struct {
 		Entries   []pendingSummary
 		Remaining int
 	}
 	a.call("GET", "/api/v1/summaries/pending", nil, &queue)
-	if len(queue.Entries) != 0 || queue.Remaining != 0 {
-		t.Fatalf("queue before opting in: %+v", queue)
+	if feed.AISummary || len(queue.Entries) != 0 || queue.Remaining != 0 {
+		t.Fatalf("queue with summaries off: %+v", queue)
 	}
 	a.call("PATCH", "/api/v1/feeds/1", map[string]any{"ai_summary": true}, &feed)
 	if !feed.AISummary {

@@ -100,7 +100,8 @@ from an image to its entries. After a migration the database is vacuumed and ana
   background pass runs every minute and handles whatever is due.
 - Per feed, the owner can set: **name**, **category**, **keep local copies** with an optional
   **since** date, **keep articles for** (30 days to 2 years, or forever; one year by default), and
-  **AI summary**.
+  **AI summary**. A new feed starts with AI summary on, whether subscribed to or imported from
+  OPML; `ai_summary: false` in the request, or the switch afterwards, turns it off.
 
 ### Retention ("keep articles for")
 
@@ -334,7 +335,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Go, SQLite, one binary | light enough for a 2 GB ARM NAS; one container, one file to back up |
 | Images stored as blobs in the same database | the collection really is one file; revisit only if images grow to many gigabytes |
 | Server never calls a model; summaries come through the API | the reader stays independent of which model is used and where it runs |
-| AI summaries are opt-in per feed, with a length threshold | the model works only where it adds something; short notes and comics are skipped |
+| AI summaries are set per feed, on for a new one, with a length threshold | the owner wants a summary nearly everywhere, so turning it off is the exception; short notes and comics are skipped by length |
 | A dedicated queue endpoint that returns ready plain text | a script or agent needs one request and no HTML parsing |
 | Summariser pulls one article at a time, checking every 5 minutes, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the NAS is too small to run a model |
 | The scheduled job needs only `READROOM_TOKEN` | one secret in one file; everything else is fixed in the unit |

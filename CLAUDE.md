@@ -63,7 +63,7 @@ Gotchas learned the hard way:
 ## Summaries
 
 The server never calls a model. `readroom summarize` (or any agent) reads
-`GET /api/v1/summaries/pending` and writes back with `PUT /api/v1/entries/{id}/summary`. Feeds opt in
+`GET /api/v1/summaries/pending` and writes back with `PUT /api/v1/entries/{id}/summary`. New feeds have it on; each can turn it off
 with their "AI summary" setting. See SPEC §4.
 
 The owner runs it from a systemd user timer on their desktop (`readroom-summarize.timer`, units and

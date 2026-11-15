@@ -73,7 +73,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 		Category      string `json:"category"`
 		Preserve      bool   `json:"preserve"`
 		PreserveSince string `json:"preserve_since"`
-		AISummary     bool   `json:"ai_summary"`
+		AISummary     *bool  `json:"ai_summary"` // on unless the request turns it off
 		KeepDays      *int   `json:"keep_days"`
 		Unread        string `json:"unread"` // how much of the backlog starts unread: recent (default), latest, all, none
 	}
@@ -113,7 +113,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
 		URL: feedURL, CustomTitle: strings.TrimSpace(in.Title), Category: strings.TrimSpace(in.Category),
-		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary, KeepDays: keep, InitialUnread: in.Unread,
+		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary == nil || *in.AISummary, KeepDays: keep, InitialUnread: in.Unread,
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -735,7 +735,7 @@ func (s *Server) apiImportOPML(w http.ResponseWriter, r *http.Request) {
 	walk = func(outlines []opmlOutline, category string) {
 		for _, o := range outlines {
 			if feedURL, ok := validFeedURL(o.XMLURL); ok {
-				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
+				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, AISummary: true, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
 				if err == nil && created {
 					added++
 				} else {
