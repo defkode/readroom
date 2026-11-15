@@ -40,7 +40,7 @@ One static Go binary and one SQLite file.
 | Sanitising | `bluemonday` UGC policy | feed and page HTML is untrusted |
 | Markdown | `html-to-markdown` | |
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
-| UI | server-rendered `html/template` + a small vanilla script | no build step, no vendored framework; the script is a client of the same REST API |
+| UI | server-rendered `html/template` + small vanilla scripts (`app.js` drives a page, `player.js` the player and in-place page changes, `prefs.js`, `folds.js`, `transitions.js`) | no build step, no vendored framework; the script is a client of the same REST API |
 
 Packages: `cmd/readroom` (entry point: `serve`, `summarize`, `speak`), `internal/store` (schema, queries),
 `internal/fetch` (polling, preservation), `internal/export` (EPUB, Markdown), `internal/htmlx` (HTML
@@ -194,8 +194,19 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - The server never runs a speech model. Asking puts the article in a queue; a client outside takes the
   text from it, makes a recording however it likes, and uploads it.
 - Under its title the article shows where that stands: "Audio in progress…" with Cancel (the page asks
-  every 5 seconds while it is open, and swaps in the player when the recording arrives); a player, with
+  every 5 seconds while it is open, and shows the recording when it arrives); a Listen button, with
   the voice's name and the day the recording will be deleted; or the reason it failed, with Try again.
+- **The player** is one bar at the bottom of the app (above the tab bar on a phone): play and pause,
+  the article's title (which leads to it), a position slider, the speed (1× to 2×, remembered per
+  device) and a button to close it. A row's ⋮ menu has Listen too, so a recording can be started from
+  a list without opening the article. The lock screen and headphone buttons control it (play, pause,
+  skip back 15 s and forward 30 s).
+- **It keeps playing while the app is used.** Every link here loads a new page, which would end the
+  sound. So while something is in the player, moving about swaps the page's content in place instead:
+  the same HTML is fetched and put where the old one was, the address and history change as usual, and
+  the script that drives a page starts again for the new one. With the player closed, pages load the
+  ordinary way. A real page load (a refresh, signing out) stops the sound; the player comes back
+  paused where it was, one tap from going on.
 - **Queue:** `GET /api/v1/audio/pending` returns the requested articles, oldest request first, as plain
   text for speech: one paragraph per line; code listings, tables and figures left out; every line
   closed by punctuation so a heading does not run into the next sentence. Hidden articles are skipped,
@@ -347,6 +358,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Speech is synthesised on the desktop rather than in the browser | tiny-voca's browser build needs a Python runtime in WebAssembly for its phonemizer, about 50 MB to embed and to download, and playback would stop with the phone's screen; a stored file plays like any other audio |
 | Recordings live in the database and are deleted after 30 days | the collection stays one file; speech is large (about 0.36 MB a minute) and listened to once, and can be made again in seconds |
 | MP3 from the reference client | plays in every browser and seeks without an index; at 48 kbit/s mono it is transparent for a 24 kHz voice |
+| One player for the whole app, and while it is on, pages are swapped in place rather than loaded | the owner listens while doing other things in the app, and a page load ends any sound; resuming on the next page would leave a gap at every click and is refused by phones without a tap. Only while playing, so ordinary use keeps plain page loads |
+| The swap replaces the whole page body and starts the page script again, instead of a framework or hand-made partial updates | every page keeps being written as a page; the one rule is that listeners are registered through the page's `on()` so they end with it |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -387,4 +400,4 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Full-text search (SQLite FTS5).
 - Polish interface.
 - Leasing in the summary queue, if more than one summariser runs.
-- A playlist of recordings.
+- A playlist of recordings: playing the next one when one ends.

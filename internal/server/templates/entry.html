@@ -36,8 +36,8 @@
   <section class="audio" id="audio" data-state="{{.Entry.Audio}}"{{if not .Entry.Audio}} hidden{{end}}>
     {{with .Entry}}
     {{if eq .Audio "ready"}}
-    <audio controls preload="metadata" src="/api/v1/entries/{{.ID}}/audio?v={{.AudioAt}}"></audio>
     <p>{{icon "audio"}}<span>{{if .AudioVoice}}Read by {{.AudioVoice}} · {{end}}kept until {{$.Page.AudioUntil}}</span>
+      <button class="play" data-action="play-audio" data-id="{{.ID}}" data-src="/api/v1/entries/{{.ID}}/audio?v={{.AudioAt}}" data-title="{{.Title}}" data-feed="{{.FeedTitle}}">Listen</button>
       <button data-action="delete-audio" data-id="{{.ID}}" data-confirm>Remove</button></p>
     {{else if eq .Audio "failed"}}
     <p>{{icon "audio"}}<span>Could not be read aloud: {{.AudioError}}</span>

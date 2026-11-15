@@ -110,7 +110,7 @@ func TestAudio(t *testing.T) {
 	if e.Audio != store.AudioReady || e.AudioVoice != "test voice" || e.AudioAt == "" || len(pending().Entries) != 0 {
 		t.Fatalf("after the upload: %q by %q at %q", e.Audio, e.AudioVoice, e.AudioAt)
 	}
-	if html := page(); !strings.Contains(html, `<audio controls`) || !strings.Contains(html, "Read by test voice") {
+	if html := page(); !strings.Contains(html, `data-action="play-audio"`) || !strings.Contains(html, "Read by test voice") {
 		t.Error("article has no player for its recording")
 	}
 

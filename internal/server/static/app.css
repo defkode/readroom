@@ -33,6 +33,7 @@
   --radius: 14px;
   --sidebar: 288px;
   --tabbar: 56px;
+  --player: 0px; /* the height the player takes at the bottom, while it is shown */
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   /* Reading preferences, set per device by prefs.js. */
@@ -119,7 +120,7 @@ small { color: var(--muted); font-size: .8em; font-weight: 400; }
 
 /* ---- shell -------------------------------------------------------------- */
 .sidebar, .iconbtn.show-sidebar { display: none; } /* the button outranks .iconbtn's own display */
-.main { min-height: 100dvh; padding-bottom: calc(var(--tabbar) + var(--safe-b) + 24px); }
+.main { min-height: 100dvh; padding-bottom: calc(var(--tabbar) + var(--safe-b) + var(--player) + 24px); }
 main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 
 .topbar {
@@ -361,13 +362,13 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article .teaser button[disabled] { opacity: .5; }
 .iconbtn.listen.on { color: var(--accent); }
 .article .audio { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-soft); font-size: .86rem; }
-.article .audio audio { display: block; width: 100%; height: 40px; margin-bottom: 8px; }
 .article .audio p { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .article .audio .icon { flex: none; width: 16px; height: 16px; color: var(--accent); }
 .article .audio span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 .article .audio small { display: block; color: var(--muted); }
 .article .audio button { padding: 5px 12px; border: 0; border-radius: 99px; background: var(--surface); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
 .article .audio button[disabled] { opacity: .5; }
+.article .audio button.play { min-width: 76px; background: var(--accent); color: var(--on-accent); }
 .article .audio .pulse { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .article .audio .pulse { animation: none; } }
@@ -437,9 +438,31 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
 .tabbar a.alert::after { top: 8px; right: calc(50% - 16px); }
 .menu a.alert::after { top: 50%; right: 12px; margin-top: -3px; }
 
+/* ---- player ------------------------------------------------------------- */
+/* One bar for the whole app, above the tab bar on a phone. It stays while pages change. */
+:root[data-player] { --player: 76px; }
+#player {
+  position: fixed; inset: auto 0 calc(var(--tabbar) + var(--safe-b)) 0; z-index: 29; view-transition-name: player;
+  background: var(--bar); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: .5px solid var(--sep);
+}
+body.reader #player, body.bare #player { bottom: 0; padding-bottom: var(--safe-b); } /* no tab bar under it there */
+#player .in { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; column-gap: 6px; height: 76px; padding: 4px 6px 0 8px; box-sizing: border-box; }
+#player .toggle { width: 42px; height: 42px; background: var(--accent); color: var(--on-accent); }
+#player .toggle .icon { width: 20px; height: 20px; }
+#player .what { display: grid; min-width: 0; margin-left: 4px; line-height: 1.25; }
+#player .what b, #player .what small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#player .what b { font-size: .9rem; font-weight: 650; }
+#player .time { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#player .rate { min-width: 46px; padding: 5px 0; border: 0; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; }
+#player .close { width: 40px; height: 40px; color: var(--muted); }
+#player .close .icon { width: 18px; height: 18px; }
+#player .seek { grid-column: 1 / -1; width: 100%; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+@media (max-width: 430px) { #player .time { display: none; } } /* the title needs the room; the slider still shows how far in */
+
 /* ---- toast -------------------------------------------------------------- */
 #toast {
-  position: fixed; left: 50%; bottom: calc(var(--tabbar) + var(--safe-b) + 16px); z-index: 100;
+  position: fixed; left: 50%; bottom: calc(var(--tabbar) + var(--safe-b) + var(--player) + 16px); z-index: 100;
   width: max-content; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 99px;
   background: var(--text); color: var(--bg); font-size: .9rem; font-weight: 600;
   transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .25s;
@@ -490,7 +513,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
   .sidebar .nav h2 { margin-left: 10px; }
   .sidebar .nav summary { margin-left: 10px; padding-right: 10px; }
   .sidebar .nav summary:hover { color: var(--text); }
-  .main { margin-left: var(--sidebar); padding-bottom: 48px; }
+  .main { margin-left: var(--sidebar); padding-bottom: calc(var(--player) + 48px); }
   body.bare .main { margin-left: 0; }
   .topbar { min-height: 64px; padding: 8px max(20px, calc((100% - 760px) / 2 - 12px)) 0 max(32px, calc((100% - 760px) / 2)); }
   body.reader .topbar { padding-inline: max(20px, calc((100% - var(--read-width)) / 2 - 12px)); }
@@ -498,7 +521,9 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
   .topbar .back { display: none; }
   body.reader .topbar .back { display: inline-grid; }
   main { padding: 0 32px; max-width: 824px; }
-  #toast { bottom: 24px; left: calc(50% + var(--sidebar) / 2); }
+  #toast { bottom: calc(var(--player) + 24px); left: calc(50% + var(--sidebar) / 2); }
+  #player { left: var(--sidebar); bottom: 0; padding-bottom: 0; }
+  #player .in { max-width: 760px; margin: 0 auto; padding-inline: 24px; }
   .entry:hover, .rowbtn:hover { background: color-mix(in srgb, var(--surface-2) 50%, transparent); }
 
   /* The sidebar can be put away; a button in the corner brings it back. It slides
@@ -513,6 +538,7 @@ kbd { display: inline-block; min-width: 1.7em; padding: 2px 6px; border: .5px so
   [data-sidebar-hidden] .sidebar { transform: translateX(-100%); visibility: hidden; }
   [data-sidebar-hidden] .main { margin-left: 0; }
   [data-sidebar-hidden] #toast { left: 50%; }
+  [data-sidebar-hidden] #player { left: 0; }
   [data-sidebar-hidden] .iconbtn.show-sidebar { opacity: 1; visibility: visible; transition-delay: .12s; }
   [data-sidebar-hidden] .topbar { padding-left: max(60px, calc((100% - 760px) / 2)); }
   [data-sidebar-hidden] body.reader .topbar { padding-left: max(60px, calc((100% - var(--read-width)) / 2 - 12px)); }

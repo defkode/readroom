@@ -109,7 +109,9 @@ To have the queue checked every 5 minutes on the machine that has the model, ins
 ## Listening
 
 An article can be read aloud. The headphones button in an article asks for it; the article shows that
-the recording is in progress, and then a player. Recordings are deleted 30 days after they were made.
+the recording is in progress, and then a Listen button. It plays in a bar at the bottom of the app that
+keeps playing while you read other pages, and from the lock screen. Recordings are deleted 30 days
+after they were made.
 
 As with summaries, the server produces nothing itself and does not care what does. It keeps a queue:
 `GET /api/v1/audio/pending` returns the articles waiting, oldest request first, each with the text to

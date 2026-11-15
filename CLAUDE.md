@@ -17,6 +17,11 @@ when behaviour changes; add new decisions to the table in SPEC §8.
   on a local network with no internet. A CSP header and a test enforce this; don't weaken either.
 - **The UI is a client of the REST API.** New behaviour goes into the API first; the web script calls
   it. No frontend framework, no build step.
+- **`app.js` runs once per page, not once per load.** While the player is on, `player.js` swaps page
+  content in place and calls `readroomBoot` again. So in `app.js`: register listeners with `on(target,
+  type, fn)` (they end with the page), never `addEventListener` directly; and move with
+  `readroomNav.go/replace/reload`, never `location.href = …` or `location.reload()`. After touching
+  navigation or page start-up, test with a recording playing as well as without.
 - **Check the UI in a browser** at phone and desktop widths, in light and dark, before calling a
   visual change done. The owner reads mostly on a phone and found high-contrast colours tiring.
 - Schema changes are forward-only migrations appended to `migrations` in `internal/store/store.go`.

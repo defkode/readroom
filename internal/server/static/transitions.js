@@ -13,20 +13,28 @@
     try { sessionStorage.setItem(fromKey, location.pathname); } catch { /* plain cross-fade then */ }
   });
 
-  addEventListener('pagereveal', (e) => {
-    if (!e.viewTransition) return;
-    let direction = '';
+  // Which way a move between two paths goes: "forward", "back", or "" for a plain cross-fade.
+  const direction = (fromPath, toPath) => {
     try {
-      const from = article(sessionStorage.getItem(fromKey));
-      const to = article(location.pathname);
-      if (to && !from) direction = 'forward';
-      else if (from && !to) direction = 'back';
-      else if (from && to && from !== to) {
+      const from = article(fromPath);
+      const to = article(toPath);
+      if (to && !from) return 'forward';
+      if (from && !to) return 'back';
+      if (from && to && from !== to) {
         // Between two articles: their order in the list they were opened from.
         const ids = JSON.parse(sessionStorage.getItem('readroom-list')).items.map((item) => String(item.id));
-        direction = ids.indexOf(to) < ids.indexOf(from) ? 'back' : 'forward';
+        return ids.indexOf(to) < ids.indexOf(from) ? 'back' : 'forward';
       }
     } catch { /* storage unavailable or no list: plain cross-fade */ }
-    if (direction) e.viewTransition.types.add(direction);
+    return '';
+  };
+  // Pages swapped in place while the player is on (player.js) slide the same way.
+  window.readroomDirection = direction;
+
+  addEventListener('pagereveal', (e) => {
+    if (!e.viewTransition) return;
+    let way = '';
+    try { way = direction(sessionStorage.getItem(fromKey), location.pathname); } catch { /* plain cross-fade */ }
+    if (way) e.viewTransition.types.add(way);
   });
 })();
