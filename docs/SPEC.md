@@ -274,7 +274,8 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Installable (manifest, icons); bottom tab bar on phones, sidebar from 900 px up, which can be hidden (remembered per device). In the sidebar, Manage feeds, Manage readlists and Display sit in one Settings menu next to the name, and Sign out at the foot; on a phone they are a tab and a section of the Feeds page.
 - A category in the feed list (the sidebar, and the Feeds tab on a phone) folds away with the arrow on
   its line; its name still leads to the category's articles. Folded, it shows the category's unread
-  count. Everything starts unfolded, and which ones are folded is remembered per device.
+  count. Everything starts unfolded, and which ones are folded is remembered per device. Categories
+  are in alphabetical order, with the feeds that have none after them, under "Uncategorised".
 - **Themes:** light and dark in neutral greys with a blue accent, after macOS; no others. The default follows
   the system. Colours are deliberately low-contrast with a muted accent — the first version (pure
   black, saturated orange) was hard to read on a phone.

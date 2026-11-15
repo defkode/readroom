@@ -457,7 +457,7 @@ func TestOPMLRoundTrip(t *testing.T) {
 	}
 	var feeds []store.Feed
 	a.call("GET", "/api/v1/feeds", nil, &feeds)
-	if len(feeds) != 2 || feeds[0].Category != "" || feeds[1].Category != "News" {
+	if len(feeds) != 2 || feeds[0].Category != "News" || feeds[1].Category != "" {
 		t.Fatalf("imported feeds: %+v", feeds)
 	}
 	out, _ := io.ReadAll(a.call("GET", "/api/v1/export/opml", nil, nil).Body)

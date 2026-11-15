@@ -75,7 +75,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 
 func (s *Store) Feeds(ctx context.Context) ([]*Feed, error) {
 	rows, err := s.db.QueryContext(ctx, feedSelect+
-		` ORDER BY f.category COLLATE NOCASE, coalesce(nullif(f.custom_title,''), f.feed_title, f.url) COLLATE NOCASE`)
+		` ORDER BY f.category = '', f.category COLLATE NOCASE, coalesce(nullif(f.custom_title,''), f.feed_title, f.url) COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
