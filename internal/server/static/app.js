@@ -232,6 +232,19 @@ const actions = {
       toast('Saved locally');
     }).catch((err) => toast(err.message));
   },
+  // Ask for the article to be read aloud; once asked, the button leads to where that stands.
+  async 'request-audio'(el) {
+    const box = document.getElementById('audio');
+    if (box.dataset.state && !('again' in el.dataset)) return box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await api('POST', `/entries/${el.dataset.id}/audio`);
+    await refreshAudio();
+    document.getElementById('audio').scrollIntoView({ block: 'center', behavior: 'smooth' });
+  },
+  async 'delete-audio'(el) {
+    if ('confirm' in el.dataset && !confirm('Remove the recording of this article?')) return;
+    await api('DELETE', `/entries/${el.dataset.id}/audio`);
+    await refreshAudio();
+  },
   'mark-all-read'(el) { return markRead(el, {}); },
   'read-through'(el) {
     const body = { through: +el.dataset.id };
@@ -552,6 +565,52 @@ const showNeighbours = async () => {
   }
 };
 if (article) showNeighbours().catch(() => {});
+
+// ---- listening ---------------------------------------------------------------
+// A recording is made outside the server, some time after it is asked for. The
+// part of the page that shows where it stands is taken from a fresh copy of the
+// page whenever that changes, and while one is awaited the article is asked now
+// and then whether it has arrived.
+const refreshAudio = async () => {
+  const res = await fetch(location.href);
+  if (!res.ok) return;
+  const fresh = new DOMParser().parseFromString(await res.text(), 'text/html');
+  for (const part of ['#audio', '#audio-button']) {
+    const from = fresh.querySelector(part), to = document.querySelector(part);
+    if (from && to) to.replaceWith(from);
+  }
+  watchAudio();
+};
+let audioTimer;
+const watchAudio = () => {
+  clearTimeout(audioTimer);
+  const box = document.getElementById('audio');
+  if (!box || box.dataset.state !== 'queued' || document.hidden) return;
+  audioTimer = setTimeout(async () => {
+    try {
+      const entry = await api('GET', `/entries/${article.dataset.id}`);
+      if (entry.audio !== 'queued') {
+        await refreshAudio();
+        if (entry.audio === 'ready') toast('The recording is ready');
+        return;
+      }
+    } catch { /* try again next time */ }
+    watchAudio();
+  }, 5000);
+};
+if (article) {
+  watchAudio();
+  document.addEventListener('visibilitychange', watchAudio);
+  // Tell the system what is playing, for the lock screen and headphone buttons.
+  document.addEventListener('play', (e) => {
+    if (!e.target.closest('#audio') || !('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: article.querySelector('h1').textContent,
+      artist: article.querySelector('.meta a').textContent,
+      album: 'Readroom',
+    });
+  }, true);
+}
 
 // Moving between articles replaces the page, so Back still leads to the list.
 document.addEventListener('click', (e) => {

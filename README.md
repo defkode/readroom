@@ -4,6 +4,7 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 
 - Web app for phone, tablet and desktop (installable: "Add to Home Screen" / "Install app")
 - REST API for everything the UI does — summaries, read/starred, readlists, exports
+- Articles read aloud on request, by whatever text-to-speech you run yourself
 - Per-feed settings: name, category, and whether to keep full local copies of articles (and since when)
 - Preserved articles (text + images) live inside the database, so they survive the original going away
 - Export an article or a readlist as EPUB or Markdown; download the whole collection as one `.db` file
@@ -49,6 +50,10 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `PATCH /entries/{id}` | any of `read`, `starred`, `hidden`, `summary`, `summary_model` |
 | `GET /summaries/pending` | work queue for a summarising script or agent — see below; `limit`, `max_chars`, `feed_id` |
 | `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
+| `POST /entries/{id}/audio` | ask for the article to be read aloud; the entry's `audio` is then `queued`, later `ready` or `failed` |
+| `GET /audio/pending` | work queue for a text-to-speech client — see below; `limit`, `max_chars`, `exclude` |
+| `PUT /entries/{id}/audio?voice=…` | the recording itself as the body, with its `audio/*` content type; `GET` plays it back (byte ranges supported), `DELETE` removes it or withdraws the request |
+| `POST /entries/{id}/audio/error` | `{error}` — a client reporting that it could not make the recording |
 | `POST /entries/{id}/preserve` | keep a local copy of this one article |
 | `DELETE /entries/{id}/preserve` | delete that local copy (text and images) and return the article; it is not fetched again unless asked for |
 | `POST /entries/mark-read` | optional `{feed_id}` or `{category}`; `{through: id}` limits it to that article and those below it (older ones, or with `order: "arrival"` those that arrived earlier); returns `{marked, ids}` |
@@ -101,14 +106,63 @@ To have the queue checked every 5 minutes on the machine that has the model, ins
 (instructions at the top of the service file). The job needs a single environment variable,
 `READROOM_TOKEN`, read from `~/.config/readroom/env`; until that is filled in, runs are skipped.
 
+## Listening
+
+An article can be read aloud. The headphones button in an article asks for it; the article shows that
+the recording is in progress, and then a player. Recordings are deleted 30 days after they were made.
+
+As with summaries, the server produces nothing itself and does not care what does. It keeps a queue:
+`GET /api/v1/audio/pending` returns the articles waiting, oldest request first, each with the text to
+read — plain text, one paragraph per line, without code listings, tables and figures:
+
+```json
+{"entries": [{"id": 42, "feed_title": "The Verge", "title": "…", "author": "…", "url": "…",
+              "published_at": "…", "text": "…", "truncated": false}],
+ "remaining": 1}
+```
+
+Upload the result with `PUT /api/v1/entries/42/audio?voice=my-voice`: the body is the audio file, in
+any format a browser plays, and `Content-Type` says which (`audio/mpeg`, `audio/ogg`, `audio/mp4`, …);
+at most 64 MB. If it cannot be made, `POST /api/v1/entries/42/audio/error` with `{"error": "…"}` shows
+the reason on the article, where "Try again" queues it once more. A recording can also be uploaded for
+an article nobody asked about.
+
+```sh
+curl -H "Authorization: Bearer $READROOM_TOKEN" -H "Content-Type: audio/mpeg" \
+  -X PUT --data-binary @article.mp3 "localhost:8090/api/v1/entries/42/audio?voice=my-voice"
+```
+
+`readroom speak` is an ordinary client of that queue, and brings no voice of its own: `-cmd` is any
+program that reads text on standard input and writes audio to standard output.
+
+```sh
+readroom speak -cmd deploy/tts/tiny-voca-speak -voice "tiny-voca M2"           # the bundled script
+readroom speak -cmd "my-tts --voice anna --wav -" -voice "anna"                  # any other engine
+readroom speak -cmd my-tts-that-writes-opus -type audio/ogg                    # uploaded as it is
+```
+
+Without `-type` the command's output is taken to be anything `ffmpeg` reads (WAV, usually) and encoded
+to mono MP3 at `-bitrate` (48k: about 0.36 MB a minute). It takes one article at a time until the queue
+is empty or `-limit` (default 10) is reached.
+
+[`deploy/tts/tiny-voca-speak`](deploy/tts/tiny-voca-speak) is one such command, for
+[tiny-voca](https://github.com/n4ze3m/tiny-voca): a 4.5M-parameter English model that reads numbers,
+dates and money sensibly and makes about 13 minutes of speech in 10 seconds on a desktop CPU. It runs
+with [uv](https://docs.astral.sh/uv/), which installs what it needs, and downloads the model (27 MB)
+on first use. English only.
+
+To have the queue checked every minute, install `deploy/systemd/readroom-speak.*` (instructions at the
+top of the service file); it uses the same `~/.config/readroom/env` as the summariser.
+
 ## Layout
 
 ```
-cmd/readroom        entry point: serve, summarize
+cmd/readroom        entry point: serve, summarize, speak
 internal/store      SQLite schema and queries
 internal/fetch      feed polling, article preservation
 internal/export     EPUB and Markdown
 internal/server     REST API, web app (templates/, static/)
+deploy              NAS compose file, systemd units for the desktop jobs, a text-to-speech script
 ```
 
 `make test` runs the suite (toolchain in Docker; Go is not needed on the host).

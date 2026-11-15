@@ -1,0 +1,14 @@
+[Unit]
+Description=Readroom: check every minute for articles to read aloud
+
+[Timer]
+# Somebody is waiting for a recording they just asked for, so the check is frequent.
+# It is one small request; nothing else runs unless an article is queued, and a run
+# still in progress is never started twice.
+OnCalendar=*:*:00
+AccuracySec=5s
+# Catch up after the machine was off or asleep.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

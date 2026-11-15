@@ -79,6 +79,12 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /api/v1/entries/{id}/summary", s.apiSetSummary)
 	api.HandleFunc("DELETE /api/v1/entries/{id}/summary", s.apiClearSummary)
 	api.HandleFunc("GET /api/v1/summaries/pending", s.apiPendingSummaries)
+	api.HandleFunc("POST /api/v1/entries/{id}/audio", s.apiRequestAudio)
+	api.HandleFunc("GET /api/v1/entries/{id}/audio", s.apiAudio)
+	api.HandleFunc("PUT /api/v1/entries/{id}/audio", s.apiSetAudio)
+	api.HandleFunc("DELETE /api/v1/entries/{id}/audio", s.apiDeleteAudio)
+	api.HandleFunc("POST /api/v1/entries/{id}/audio/error", s.apiAudioFailed)
+	api.HandleFunc("GET /api/v1/audio/pending", s.apiPendingAudio)
 
 	api.HandleFunc("GET /api/v1/readlists", s.apiReadlists)
 	api.HandleFunc("POST /api/v1/readlists", s.apiCreateReadlist)

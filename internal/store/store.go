@@ -156,6 +156,19 @@ CREATE INDEX entries_starred ON entries (published_at DESC, id DESC) WHERE starr
 CREATE INDEX readlist_entries_entry ON readlist_entries (entry_id);
 CREATE INDEX entry_assets_sha ON entry_assets (sha256);
 `,
+	`
+-- Spoken versions of articles, asked for one at a time and made by a text-to-speech
+-- client outside the server. A row without data is a request still waiting.
+CREATE TABLE entry_audio (
+	entry_id     INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+	requested_at TEXT NOT NULL,
+	created_at   TEXT,                     -- when the recording arrived; NULL while waiting
+	mime         TEXT NOT NULL DEFAULT '',
+	voice        TEXT NOT NULL DEFAULT '', -- what read it, as the client names itself
+	error        TEXT NOT NULL DEFAULT '', -- why the last attempt failed, if it did
+	data         BLOB                      -- last, so reading the columns above never touches it
+);
+`,
 }
 
 func Open(path string) (*Store, error) {

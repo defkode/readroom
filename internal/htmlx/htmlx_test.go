@@ -41,3 +41,13 @@ func TestLeadCutsAtSentence(t *testing.T) {
 		t.Errorf("word cut: %q", got)
 	}
 }
+
+func TestSpeech(t *testing.T) {
+	got := Speech(`<h2>A heading</h2><p>First sentence. Second “one.”</p><pre>code()</pre>` +
+		`<figure><img src="a.png"><figcaption>A chart</figcaption></figure><ul><li>An item</li><li>Done!</li></ul>` +
+		`<table><tr><td>1</td></tr></table><p>The end</p>`)
+	want := "A heading.\nFirst sentence. Second “one.”\nAn item.\nDone!\nThe end."
+	if got != want {
+		t.Errorf("Speech:\n got %q\nwant %q", got, want)
+	}
+}

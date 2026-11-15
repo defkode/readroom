@@ -3,6 +3,7 @@
 <button class="iconbtn toggle{{if .Readlists}} on{{end}}" id="lists-button" data-action="open-dialog" data-dialog="lists-dialog" aria-label="Readlists" title="{{if .Readlists}}In a readlist{{else}}Add to a readlist{{end}}">{{icon "lists"}}</button>
 <button class="iconbtn toggle{{if .Starred}} on{{end}}" data-action="toggle-star" data-id="{{.ID}}" aria-label="Star" aria-pressed="{{.Starred}}" title="Star">{{icon "star"}}</button>
 <button class="iconbtn toggle{{if .Preserved}} on{{end}}" data-action="{{if .Preserved}}unpreserve{{else}}preserve{{end}}" data-id="{{.ID}}" aria-label="{{if .Preserved}}Remove the local copy{{else}}Keep a local copy{{end}}" title="{{if .Preserved}}Saved locally · remove the copy{{else}}Keep a local copy{{end}}">{{icon "archive"}}</button>
+<button class="iconbtn listen{{if .Audio}} on{{end}}" id="audio-button" data-action="request-audio" data-id="{{.ID}}" aria-label="Listen" title="{{if eq .Audio "ready"}}Listen{{else if .Audio}}Audio requested{{else}}Have this article read aloud{{end}}">{{icon "audio"}}</button>
 <button class="iconbtn" data-action="open-dialog" data-dialog="export-dialog" aria-label="Export" title="Export">{{icon "download"}}</button>
 {{if .URL}}<a class="iconbtn" href="{{.URL}}" target="_blank" rel="noopener noreferrer" aria-label="Open original" title="Open original">{{icon "external"}}</a>{{end}}
 {{end}}{{end}}{{end}}
@@ -31,6 +32,23 @@
     <button data-action="preserve-feed" data-feed="{{.Entry.FeedID}}" data-id="{{.Entry.ID}}">Always for this feed</button>
   </p>
   {{end}}
+  {{/* The spoken version; the script swaps this in again when its state changes. */}}
+  <section class="audio" id="audio" data-state="{{.Entry.Audio}}"{{if not .Entry.Audio}} hidden{{end}}>
+    {{with .Entry}}
+    {{if eq .Audio "ready"}}
+    <audio controls preload="metadata" src="/api/v1/entries/{{.ID}}/audio?v={{.AudioAt}}"></audio>
+    <p>{{icon "audio"}}<span>{{if .AudioVoice}}Read by {{.AudioVoice}} · {{end}}kept until {{$.Page.AudioUntil}}</span>
+      <button data-action="delete-audio" data-id="{{.ID}}" data-confirm>Remove</button></p>
+    {{else if eq .Audio "failed"}}
+    <p>{{icon "audio"}}<span>Could not be read aloud: {{.AudioError}}</span>
+      <button data-action="request-audio" data-id="{{.ID}}" data-again>Try again</button>
+      <button data-action="delete-audio" data-id="{{.ID}}">Dismiss</button></p>
+    {{else if .Audio}}
+    <p>{{icon "audio"}}<span><b class="pulse"></b>Audio in progress… <small>It appears here as soon as it has been made.</small></span>
+      <button data-action="delete-audio" data-id="{{.ID}}">Cancel</button></p>
+    {{end}}
+    {{end}}
+  </section>
   {{if .Paragraph}}
   <section class="summary">
     <h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>

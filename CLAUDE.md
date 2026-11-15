@@ -65,3 +65,12 @@ The owner runs it from a systemd user timer on their desktop (`readroom-summariz
 setup in `deploy/systemd/`). After changing the summariser, reinstall the binary there
 (`install -D bin/readroom ~/.local/bin/readroom`). Check it with
 `systemctl --user status readroom-summarize` and `journalctl --user -u readroom-summarize`.
+
+## Listening
+
+Same shape as summaries: the server never runs a speech model. The headphones button in an article
+queues it; `readroom speak` (or any client) reads `GET /api/v1/audio/pending` and uploads a recording
+with `PUT /api/v1/entries/{id}/audio`. Keep that API ignorant of what makes the audio — the owner
+wants to be able to swap the text-to-speech engine. `readroom speak -cmd` runs any command from text
+on stdin to audio on stdout; `deploy/tts/tiny-voca-speak` (a uv script) is the one in use. Recordings
+are deleted after 30 days. See SPEC §4, units in `deploy/systemd/readroom-speak.*`.

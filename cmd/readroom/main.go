@@ -40,8 +40,10 @@ func main() {
 		err = serve()
 	case "summarize":
 		err = summarize(os.Args[2:])
+	case "speak":
+		err = speak(os.Args[2:])
 	default:
-		fmt.Fprintln(os.Stderr, `usage: readroom [serve|summarize]
+		fmt.Fprintln(os.Stderr, `usage: readroom [serve|summarize|speak]
 
   serve       run the reader (default). Configured through the environment:
                 READROOM_ADDR      listen address            (default :8090)
@@ -52,7 +54,9 @@ func main() {
                 READROOM_INTERVAL  how often feeds are polled (default 30m)
                 READROOM_LOG       info or debug             (default info)
                 READROOM_SUMMARY_MIN_CHARS  shortest article queued for an AI summary (default 1500)
-  summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"`)
+  summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"
+  speak       record the articles asked to be read aloud with a text-to-speech
+              command; see "readroom speak -h"`)
 		os.Exit(2)
 	}
 	if err != nil {

@@ -85,6 +85,11 @@ func (f *Fetcher) Pass(ctx context.Context) {
 		} else if n > 0 {
 			f.Log.Info("deleted expired articles", "count", n)
 		}
+		if n, err := f.Store.PruneAudio(ctx); err != nil {
+			f.Log.Error("delete old recordings", "err", err)
+		} else if n > 0 {
+			f.Log.Info("deleted old recordings", "count", n)
+		}
 	}
 }
 

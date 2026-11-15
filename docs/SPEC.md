@@ -1,7 +1,7 @@
 # Readroom — specification
 
 What Readroom is, how it behaves, and why it is built this way. This document describes the state of
-the code as of 2026-11-10 (commit `d2ec66b`); the README remains the quick start and API reference.
+the code as of 2026-11-15; the README remains the quick start and API reference.
 
 ## 1. Purpose
 
@@ -16,10 +16,11 @@ Goals, in the owner's words at the start of the project:
 - a REST API, so an external script or agent can write article summaries (local model or Claude),
   mark articles read, star them, organise them into readlists
 - preservation: an article stays readable even after the original disappears
+- listening: an article read aloud on request (added 2026-11-15)
 - export to EPUB or Markdown for reading on a reMarkable
 - the whole collection exportable as one file
 
-Non-goals: multiple users, a hosted service, calling an LLM from the server, recommendation or
+Non-goals: multiple users, a hosted service, calling an LLM or a speech model from the server, recommendation or
 ranking, a native mobile app.
 
 Why build it: Folo has no self-hosted backend and cannot reach a local model; Miniflux is the closest
@@ -41,7 +42,7 @@ One static Go binary and one SQLite file.
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
 | UI | server-rendered `html/template` + a small vanilla script | no build step, no vendored framework; the script is a client of the same REST API |
 
-Packages: `cmd/readroom` (entry point: `serve`, `summarize`), `internal/store` (schema, queries),
+Packages: `cmd/readroom` (entry point: `serve`, `summarize`, `speak`), `internal/store` (schema, queries),
 `internal/fetch` (polling, preservation), `internal/export` (EPUB, Markdown), `internal/htmlx` (HTML
 helpers, excerpts), `internal/server` (API, web app, embedded templates and static files).
 
@@ -70,6 +71,8 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
 - **assets** / **entry_assets** — preserved images as blobs, keyed by SHA-256, linked to the entries
   that use them.
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
+- **entry_audio** — at most one row per entry: a request to have it read aloud (`requested_at`) and,
+  once made, the recording as a blob (`data`, `mime`, `voice`, `created_at`), or why it failed (`error`).
 
 Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Deleting a
 feed deletes its entries and any images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
@@ -177,6 +180,33 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - `readroom summarize` is a reference client: any OpenAI-compatible server (tested with a local
   `qwen3.6-fast` through llama-server) or the `claude` CLI with Haiku, tools disabled so text inside an
   article cannot make it act.
+
+### Listening
+
+- An article is read aloud **only when asked**: the headphones button in its toolbar. Nothing is
+  recorded for a feed as a whole.
+- The server never runs a speech model. Asking puts the article in a queue; a client outside takes the
+  text from it, makes a recording however it likes, and uploads it.
+- Under its title the article shows where that stands: "Audio in progress…" with Cancel (the page asks
+  every 5 seconds while it is open, and swaps in the player when the recording arrives); a player, with
+  the voice's name and the day the recording will be deleted; or the reason it failed, with Try again.
+- **Queue:** `GET /api/v1/audio/pending` returns the requested articles, oldest request first, as plain
+  text for speech: one paragraph per line; code listings, tables and figures left out; every line
+  closed by punctuation so a heading does not run into the next sentence. Hidden articles are skipped,
+  and one whose full local copy is still on its way waits for it, as with summaries.
+- `PUT /api/v1/entries/{id}/audio?voice=…` stores the recording: the body is the file, in any `audio/*`
+  type, up to 64 MB. `POST …/audio/error` records a failure, which takes the article out of the queue
+  until asked for again. `GET` serves the recording with byte ranges; `DELETE` removes it or withdraws
+  the request.
+- **Recordings are deleted 30 days after they were made**, by the hourly sweep; so are requests nobody
+  answered in that time. The article is untouched and can be asked for again.
+- `readroom speak` is the reference client: it runs any command that reads text on standard input and
+  writes audio to standard output, encodes the result to mono MP3 with ffmpeg (or uploads it as it is,
+  with `-type`), and reports a failed command on the article. The title is read first.
+- `deploy/tts/tiny-voca-speak` is one such command, around the tiny-voca model: English, two voices,
+  far faster than real time on a CPU. It splits paragraphs into sentences, the unit the model reads.
+- **Schedule:** a systemd user timer (`deploy/systemd/readroom-speak.*`) checks the queue every minute
+  on the owner's desktop.
 
 ### Reading, organising, searching
 
@@ -303,6 +333,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Unread is ordered by arrival, not publication, and a new feed brings only its recent articles as unread | in publication order a new feed's backlog was scattered deep in the list and missed; in arrival order a whole backlog would push everything else down |
 | Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
 | Article text lives in its own table, and the Unread indexes hold unread rows only | every list had to step over each article's HTML to read its flags; and over time nearly everything is read, so an index of what is not stays small |
+| Articles are read aloud on request only, by a client outside the server, through a queue like the summaries' | speech for every article would be made mostly for nothing; and the NAS is too small for a model, while the desktop makes 13 minutes of speech in 10 seconds |
+| The audio API takes any audio file and knows nothing about what made it; `readroom speak` runs any command from text to audio | text-to-speech models change quickly — the first one used, tiny-voca, was days old — and replacing one must not touch the server |
+| Speech is synthesised on the desktop rather than in the browser | tiny-voca's browser build needs a Python runtime in WebAssembly for its phonemizer, about 50 MB to embed and to download, and playback would stop with the phone's screen; a stored file plays like any other audio |
+| Recordings live in the database and are deleted after 30 days | the collection stays one file; speech is large (about 0.36 MB a minute) and listened to once, and can be made again in seconds |
+| MP3 from the reference client | plays in every browser and seeks without an index; at 48 kbit/s mono it is transparent for a 24 kHz voice |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -325,6 +360,10 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   port 8090 on the NAS as well would settle it.
 - Summaries are produced only while the owner's desktop is on: the scheduled job and the model run there,
   not on the NAS.
+- Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
+  waits (up to 30 days).
+- The bundled text-to-speech script is English only, and mispronounces some names and unusual words.
+- A recording is read into memory whole to be served (a few MB each); fine for one listener.
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on
   a reMarkable.
 - Thumbnails and article images of entries without a local copy load from the original site.
@@ -338,3 +377,4 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Full-text search (SQLite FTS5).
 - Polish interface.
 - Leasing in the summary queue, if more than one summariser runs.
+- Marking in lists which articles have a recording; a playlist of recordings.

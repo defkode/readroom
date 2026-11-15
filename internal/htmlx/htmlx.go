@@ -209,7 +209,35 @@ var blockTags = map[string]bool{
 }
 
 // Text reduces HTML to readable plain text, one block per line.
-func Text(s string) string {
+func Text(s string) string { return text(s, nil) }
+
+// notSpoken is what a listener gains nothing from hearing read out.
+var notSpoken = map[string]bool{"pre": true, "table": true, "figure": true, "svg": true, "math": true}
+
+// Speech reduces HTML to text for reading aloud, one block per line: like
+// Text, but without code listings, tables and figures, and with every line
+// closed by punctuation, so that a heading or a list item does not run into
+// the sentence after it.
+func Speech(s string) string {
+	lines := strings.Split(text(s, notSpoken), "\n")
+	for i, l := range lines {
+		if l != "" && !strings.ContainsRune(".!?:;…", lastLetter(l)) {
+			lines[i] = l + "."
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// lastLetter is the last character of l, looking past closing quotes and brackets.
+func lastLetter(l string) rune {
+	r := []rune(strings.TrimRight(l, `"'”’)]»`))
+	if len(r) == 0 {
+		return 0
+	}
+	return r[len(r)-1]
+}
+
+func text(s string, skip map[string]bool) string {
 	nodes, err := ParseFragment(s)
 	if err != nil {
 		return s
@@ -217,6 +245,10 @@ func Text(s string) string {
 	var b strings.Builder
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && skip[n.Data] {
+			b.WriteString("\n")
+			return
+		}
 		if n.Type == html.TextNode {
 			b.WriteString(n.Data)
 		}

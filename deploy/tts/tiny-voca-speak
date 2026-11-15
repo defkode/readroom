@@ -1,0 +1,151 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "numpy>=1.24,<3",
+#   "onnxruntime>=1.18,<2",
+#   "dizione @ git+https://github.com/n4ze3m/dizione@f8629fe989f3d0db5f440f9b3c6f0154f2e6110f",
+# ]
+# ///
+"""Read text aloud with tiny-voca: text on standard input, a WAV file on standard output.
+
+One way to answer Readroom's audio queue:
+
+    readroom speak -cmd deploy/tts/tiny-voca-speak -voice "tiny-voca M2"
+
+tiny-voca (https://github.com/n4ze3m/tiny-voca, Apache-2.0) is a 4.5M-parameter
+English model that runs faster than real time on a CPU. Its files (27 MB) are
+downloaded once, to $TINY_VOCA_HOME or ~/.local/share/readroom/tiny-voca.
+
+Each line of the input is a paragraph. The model reads one sentence at a time,
+so paragraphs are cut into sentences, and sentences too long for it at commas.
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.request
+import wave
+from pathlib import Path
+
+SOURCE = "https://huggingface.co/n4ze3m/tiny-voca/resolve/main/"
+FILES = {  # local name -> path in the model repository
+    "model.onnx": "onnx/model.onnx",
+    "config.json": "config.json",
+    **{"phonemizer/" + name: "phonemizer/" + name
+       for name in ("lexicon.tsv", "align.json", "g2p.json", "g2p.npz", "homographs.json",
+                    "LICENSE.cmudict", "LICENSE.homograph-data")},
+}
+MODEL_SHA256 = "fe6d918791a15b82e37465981d7f27a070e46b46635e5a3482fc8dff87a1ae46"
+
+SENTENCE_GAP, PARAGRAPH_GAP = 0.3, 0.7  # seconds of silence
+
+
+def fetch(home):
+    for name, remote in FILES.items():
+        target = home / name
+        if target.exists():
+            continue
+        print(f"downloading {remote}", file=sys.stderr)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(SOURCE + remote, timeout=120) as response:
+            data = response.read()
+        if name == "model.onnx" and hashlib.sha256(data).hexdigest() != MODEL_SHA256:
+            sys.exit("tiny-voca: the downloaded model is not the expected file")
+        partial = target.with_name(target.name + ".part")
+        partial.write_bytes(data)
+        partial.rename(target)
+
+
+ABBREVIATION = re.compile(r"(?:\b(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|no|inc|ltd|co|e\.g|i\.e|a\.m|p\.m)|\b[A-Z])\.$", re.I)
+BOUNDARY = re.compile(r"""(?<=[.!?…])["')\]”’]*\s+(?=["'(\[“‘]?[A-Z0-9])""")
+
+
+def sentences(paragraph):
+    """Sentences, without breaking after titles, initials or inside numbers."""
+    parts, current = [], ""
+    for piece in BOUNDARY.split(paragraph):
+        current = f"{current} {piece}" if current else piece
+        if not ABBREVIATION.search(current):
+            parts.append(current)
+            current = ""
+    if current:
+        parts.append(current)
+    return [part for part in parts if re.search(r"\w", part)]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--voice", choices=("F2", "M2"), default=os.environ.get("TINY_VOCA_VOICE", "M2"))
+    parser.add_argument("--speed", type=float, default=float(os.environ.get("TINY_VOCA_SPEED", "1")),
+                        help="speaking rate; larger is faster")
+    args = parser.parse_args()
+
+    home = Path(os.environ.get("TINY_VOCA_HOME") or
+                Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "readroom/tiny-voca")
+    fetch(home)
+    os.environ["DIZIONE_DATA"] = str(home / "phonemizer")
+
+    import dizione
+    import numpy as np
+    import onnxruntime as ort
+
+    ort.disable_telemetry_events()  # everything here stays on this machine
+    config = json.loads((home / "config.json").read_text())
+    rate = config["sample_rate"]
+    limit = config["model"]["max_tokens"] - 12
+    session = ort.InferenceSession(str(home / "model.onnx"), providers=["CPUExecutionProvider"])
+    voice = np.array([config["voices"].index(args.voice)], dtype=np.int64)
+    one = lambda value: np.array([value], dtype=np.float32)
+
+    def fit(sentence):
+        """The sentence as utterances the model can take: whole, or cut at commas, then between words."""
+        phones = dizione.phonemize(sentence)
+        if len(phones.ids) <= limit:
+            return [phones]
+        pieces = re.split(r"(?<=[,;:—])\s+", sentence)
+        if len(pieces) > 1:
+            return [utterance for piece in pieces for utterance in fit(piece)]
+        words = sentence.split(" ")
+        if len(words) < 2:
+            return []
+        half = (len(words) + 1) // 2
+        return fit(" ".join(words[:half])) + fit(" ".join(words[half:]))
+
+    def say(phones):
+        audio = session.run(["audio"], {
+            "tokens": np.array([phones.ids], dtype=np.int64),
+            "stress": np.array([phones.stress], dtype=np.int64),
+            "voice": voice, "speed": one(args.speed), "pitch_shift": one(0.0), "pitch_range": one(1.0),
+        })[0][0]
+        if not np.isfinite(audio).all():
+            raise RuntimeError("the model produced no usable audio")
+        return audio
+
+    silence = lambda seconds: np.zeros(int(rate * seconds), dtype=np.float32)
+    chunks = []
+    for paragraph in sys.stdin.read().splitlines():
+        spoken = False
+        for sentence in sentences(" ".join(paragraph.split())):
+            for phones in fit(sentence):
+                chunks += [say(phones), silence(SENTENCE_GAP)]
+                spoken = True
+        if spoken:
+            chunks[-1] = silence(PARAGRAPH_GAP)
+    if not chunks:
+        sys.exit("tiny-voca: there was nothing to read")
+
+    audio = np.concatenate(chunks[:-1])
+    pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2")
+    with wave.open(sys.stdout.buffer, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        out.writeframes(pcm.tobytes())
+    print(f"{len(audio) / rate:.0f}s of speech", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

@@ -475,6 +475,8 @@ type entryPage struct {
 	FirstRead bool // this very visit marked it read, so there is no earlier reading to report
 	Teaser    bool // the feed sends only teasers and this article has no fuller copy: offer one
 	Paragraph []string
+	// AudioUntil is the day the recording will be deleted, e.g. "14 Dec".
+	AudioUntil string
 }
 
 // listsSheet is the readlists sheet's data: every list, and for an article which hold it.
@@ -517,6 +519,10 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		member[lid] = true
 	}
 	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead, Lists: listsSheet{EntryID: e.ID}}
+	if made, err := time.Parse(store.TimeFormat, e.AudioAt); err == nil {
+		until := made.AddDate(0, 0, store.AudioKeepDays).Format(store.TimeFormat)
+		page.AudioUntil = shortDay(&until)
+	}
 	for _, g := range sh.Groups {
 		for _, feed := range g.Feeds {
 			if feed.ID == e.FeedID {

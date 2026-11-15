@@ -38,12 +38,16 @@ type Entry struct {
 	Preserved      bool    `json:"preserved"`
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
+	Audio          string  `json:"audio"` // spoken version: "" (none), "queued", "ready" or "failed"
 	CreatedAt      string  `json:"created_at"`
 
 	// Only filled when a single entry is loaded.
 	Content          string  `json:"content,omitempty"`           // HTML from the feed
 	PreservedContent *string `json:"preserved_content,omitempty"` // full article HTML, images at /assets/…
 	Readlists        []int64 `json:"readlists,omitempty"`
+	AudioVoice       string  `json:"audio_voice,omitempty"` // what read it, as the client named itself
+	AudioAt          string  `json:"audio_at,omitempty"`    // when the recording arrived
+	AudioError       string  `json:"audio_error,omitempty"`
 }
 
 // Body is the best HTML available: the preserved copy, else the feed's content.
@@ -58,13 +62,13 @@ const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
 e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
-e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, e.created_at`
+e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((`+audioState+`), ''), e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
 		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
-		&e.PreserveError, &e.CreatedAt}
+		&e.PreserveError, &e.Audio, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
 	}
@@ -225,6 +229,16 @@ func (s *Store) Entry(ctx context.Context, id int64) (*Entry, error) {
 FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id WHERE e.id = ?`, id), true)
 	if err != nil {
 		return nil, err
+	}
+	if e.Audio != "" {
+		var at *string
+		if err := s.db.QueryRowContext(ctx, `SELECT voice, created_at, error FROM entry_audio WHERE entry_id = ?`, id).
+			Scan(&e.AudioVoice, &at, &e.AudioError); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if at != nil {
+			e.AudioAt = *at
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT readlist_id FROM readlist_entries WHERE entry_id = ?`, id)
 	if err != nil {
