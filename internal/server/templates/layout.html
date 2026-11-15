@@ -199,7 +199,7 @@
     </ul>
   </details>
   {{end}}
-  {{if not .Groups}}<p class="hint">No feeds yet. Add one under Manage.</p>{{end}}
+  {{if not .Groups}}<p class="hint">No feeds yet. Subscribe to one under Manage.</p>{{end}}
   <h2 class="settings">Settings</h2>
   <ul class="group foot">
     <li><a href="/feeds" class="{{if eq .Active "manage"}}on{{end}}">{{icon "manage"}}<span>Manage feeds</span></a></li>
@@ -241,7 +241,7 @@
     <div class="buttons">
       <button class="btn" value="save">Save</button>
       <button class="btn quiet" type="button" data-action="refresh-feed">{{icon "refresh"}} Refresh now</button>
-      <button class="btn quiet danger" type="button" data-action="delete-feed">Delete feed</button>
+      <button class="btn quiet danger" type="button" data-action="unsubscribe">Unsubscribe</button>
       <button class="btn quiet" type="button" data-action="close-dialog">Cancel</button>
     </div>
   </form>

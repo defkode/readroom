@@ -74,7 +74,7 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
 - **entry_audio** — at most one row per entry: a request to have it read aloud (`requested_at`) and,
   once made, the recording as a blob (`data`, `mime`, `voice`, `created_at`), or why it failed (`error`).
 
-Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Deleting a
+Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Unsubscribing from a
 feed deletes its entries and any images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
 
 Indexes follow the lists that are shown: by publication date overall and per feed; partial indexes
@@ -86,14 +86,15 @@ from an image to its entries. After a migration the database is vacuumed and ana
 
 ### Feeds
 
-- Added by address. The address is checked before anything is saved: it must be a feed, or a page that
+- The interface speaks of subscribing and unsubscribing, not of adding and deleting feeds.
+- Subscribed to by address. The address is checked before anything is saved: it must be a feed, or a page that
   leads to one (a `<link rel="alternate">`, or a feed at a customary path such as `/feed.xml`), so a
   site's home page or an article is enough. Otherwise the form says why. Changing a feed's address is
   checked the same way; OPML import is not, and what fails there shows up as below.
-- Adding a feed says how much of what it already holds starts unread: the last 30 days (the default,
+- Subscribing says how much of what it already holds starts unread: the last 30 days (the default,
   and never fewer than the 3 newest), the latest 10, everything, or nothing. The rest arrives already
   read — in the archive, not in the way. Imported feeds get the default.
-- A feed that was added is confirmed: a message names it and says how many articles it brought, and
+- A new subscription is confirmed: a message names it and says how many articles it brought, and
   its row in the list is briefly highlighted and scrolled into view.
 - Each feed is polled every `READROOM_INTERVAL` (default 30 minutes) using conditional requests; a
   background pass runs every minute and handles whatever is due.

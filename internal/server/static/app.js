@@ -332,11 +332,11 @@ const actions = {
     try { localStorage.setItem(outageKey, notice.dataset.key); } catch { /* shown again next time */ }
     notice.hidden = true;
   },
-  async 'delete-feed'(el) {
+  async unsubscribe(el) {
     const form = el.closest('form');
-    if (!confirm(`Delete "${form.title.value || form.title.placeholder}" and all its articles?`)) return;
+    if (!confirm(`Unsubscribe from "${form.title.value || form.title.placeholder}"?\n\nIts articles are deleted with it.`)) return;
     await api('DELETE', `/feeds/${form.dataset.id}`);
-    // Deleted from the feed's own list, there is nothing left here to show.
+    // Unsubscribed from the feed's own list, there is nothing left here to show.
     new URLSearchParams(location.search).has('feed_id') ? (location.href = '/') : location.reload();
   },
   // Menus are shared popovers, placed under the button that opened them. A row's
@@ -376,7 +376,7 @@ const actions = {
 };
 
 const submits = {
-  async 'add-feed'(form) {
+  async subscribe(form) {
     const feed = await api('POST', '/feeds', { url: form.url.value, category: form.category.value, unread: form.unread.value });
     // A feed that sends only the opening of each article: offer to fetch the rest.
     if (feed.teaser_only && !feed.preserve &&
@@ -406,14 +406,14 @@ const submits = {
   },
 };
 
-// After adding a feed the page reloads: confirm it and point at the new row.
+// After subscribing the page reloads: confirm it and point at the new row.
 const addedKey = 'readroom-added-feed';
 try {
   const added = JSON.parse(sessionStorage.getItem(addedKey));
   sessionStorage.removeItem(addedKey);
   if (added && Date.now() - added.at < 5000) {
     const articles = added.total === 1 ? '1 article' : `${added.total || 0} articles`;
-    toast(`Added “${added.title}” · ${articles}`);
+    toast(`Subscribed to “${added.title}” · ${articles}`);
     // A failing feed is listed twice; the last match is its place among the categories.
     const row = [...document.querySelectorAll(`.rowbtn[data-action="edit-feed"][data-id="${added.id}"]`)].pop();
     if (row) {
