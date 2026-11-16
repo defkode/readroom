@@ -49,7 +49,7 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `POST /articles` | `{url}` — save the article at an address, no feed needed: the page is read as an anonymous visitor would get it (text hidden by a style included), and stored with its images under the built-in "Saved articles" feed (`saved: true` in `GET /feeds`). Answers `201` with `{created: true, entry}`, `200` with `created: false` when that address is already saved, `422` with the reason when no article could be read |
 | `GET /entries` | hidden articles are left out unless `hidden=true` asks for them instead; filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc` or `order=arrival` (newest arrivals first), `limit`; page with `before=<next>` |
 | `GET /entries/{id}` | includes `content` and `preserved_content`; every entry carries `reading_minutes`, an estimate from its text length |
-| `PATCH /entries/{id}` | any of `read`, `starred`, `hidden`, `summary`, `summary_model` |
+| `PATCH /entries/{id}` | any of `read`, `starred`, `hidden`, `summary`, `summary_model`, `position` (how far it has been read, as a share of its text from `0` to `1`; `GET /entries?reading=true` lists the articles begun and not finished) |
 | `GET /summaries/pending` | work queue for a summarising script or agent — see below; `limit`, `max_chars`, `feed_id` |
 | `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
 | `POST /entries/{id}/audio` | ask for the article to be read aloud; the entry's `audio` is then `queued`, later `ready` or `failed` |

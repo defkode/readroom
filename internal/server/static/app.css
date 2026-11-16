@@ -356,6 +356,7 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article .status .err { flex-basis: 100%; }
 /* An offer to fetch the full text when the feed sent only its opening. */
 .article .teaser { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-soft); font-size: .86rem; }
+.article .teaser[hidden] { display: none; }
 .article .teaser .icon { width: 16px; height: 16px; color: var(--accent); }
 .article .teaser span { flex: 1 1 calc(100% - 30px); } /* the offer on one line, its two answers on the next */
 .article .teaser button { padding: 5px 12px; border: 0; border-radius: 99px; background: var(--surface); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
@@ -547,3 +548,13 @@ body.reader #player, body.bare #player { bottom: 0; padding-bottom: var(--safe-b
   * { animation: none !important; transition: none !important; }
   @view-transition { navigation: none; }
 }
+
+/* Continue reading: half-read articles on the Unread list, each with how far it was read. */
+.section.first { margin-top: 4px; }
+.list.reading { margin-bottom: 14px; }
+.list.reading .split { flex-wrap: nowrap; }
+.list.reading .rowbtn { flex: 1 1 0; min-width: 0; text-decoration: none; color: inherit; }
+.list.reading > li > .iconbtn { flex: none; margin-right: 6px; color: var(--muted); }
+.list.reading > li > .iconbtn .icon { width: 16px; height: 16px; }
+.progress { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: var(--bg); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: 2px; background: var(--accent); opacity: .7; }

@@ -767,3 +767,49 @@ func TestSavingAnArticle(t *testing.T) {
 		t.Fatalf("share target: %v, status %d to %q, want %q", err, shared.StatusCode, shared.Header.Get("Location"), want)
 	}
 }
+
+func TestReadingPosition(t *testing.T) {
+	a, site := newApp(t), origin(t)
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "keep_days": 0, "unread": "all"}, nil)
+
+	// A reader reports how far it got; that is what another device is offered.
+	var e store.Entry
+	a.call("PATCH", "/api/v1/entries/1", map[string]any{"position": 0.42}, &e)
+	if e.Position != 0.42 || e.PositionAt == nil || !e.Reading() {
+		t.Fatalf("position after reporting: %+v", e)
+	}
+	if resp := a.call("PATCH", "/api/v1/entries/1", map[string]any{"position": 1.5}, nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("position out of range: got %d, want 400", resp.StatusCode)
+	}
+	var list struct {
+		Entries []store.Entry `json:"entries"`
+	}
+	a.call("GET", "/api/v1/entries?reading=true", nil, &list)
+	if len(list.Entries) != 1 || list.Entries[0].ID != 1 {
+		t.Fatalf("articles being read: %+v", list.Entries)
+	}
+	page := func(path string) string {
+		req, _ := http.NewRequest("GET", a.url+path, nil)
+		req.Header.Set("Authorization", "Bearer secret")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return string(body)
+	}
+	if html := page("/"); !strings.Contains(html, "Continue reading") || !strings.Contains(html, "42% read") {
+		t.Fatal("the Unread list does not offer the half-read article")
+	}
+	if html := page("/entries/1"); !strings.Contains(html, `data-position="0.42"`) || !strings.Contains(html, "You stopped reading at 42%") {
+		t.Fatal("the article does not offer to go on from 42%")
+	}
+
+	// Read to the end, it is no longer something to go back to.
+	a.call("PATCH", "/api/v1/entries/1", map[string]any{"position": 1}, &e)
+	a.call("GET", "/api/v1/entries?reading=true", nil, &list)
+	if e.Reading() || len(list.Entries) != 0 || strings.Contains(page("/"), "Continue reading") {
+		t.Fatalf("a finished article is still offered: %+v", e)
+	}
+}

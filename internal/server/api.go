@@ -357,8 +357,8 @@ func boolParam(q url.Values, name string) *bool {
 func entryFilter(q url.Values) store.EntryFilter {
 	f := store.EntryFilter{
 		Read: boolParam(q, "read"), Starred: boolParam(q, "starred"), Preserved: boolParam(q, "preserved"),
-		Hidden: q.Get("hidden") == "true",
-		Query:  q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc", ByArrival: q.Get("order") == "arrival",
+		Hidden: q.Get("hidden") == "true", InProgress: q.Get("reading") == "true",
+		Query: q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc", ByArrival: q.Get("order") == "arrival",
 	}
 	f.FeedID, _ = strconv.ParseInt(q.Get("feed_id"), 10, 64)
 	f.ReadlistID, _ = strconv.ParseInt(q.Get("readlist_id"), 10, 64)
@@ -416,13 +416,18 @@ func (s *Server) apiEntry(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Read         *bool   `json:"read"`
-		Starred      *bool   `json:"starred"`
-		Hidden       *bool   `json:"hidden"`
-		Summary      *string `json:"summary"`
-		SummaryModel *string `json:"summary_model"`
+		Read         *bool    `json:"read"`
+		Starred      *bool    `json:"starred"`
+		Hidden       *bool    `json:"hidden"`
+		Summary      *string  `json:"summary"`
+		SummaryModel *string  `json:"summary_model"`
+		Position     *float64 `json:"position"`
 	}
 	if !readJSON(w, r, &in) {
+		return
+	}
+	if in.Position != nil && !(*in.Position >= 0 && *in.Position <= 1) {
+		writeError(w, http.StatusBadRequest, "position must be a number from 0 (not begun) to 1 (finished)")
 		return
 	}
 	id := pathID(r, "id")
@@ -431,7 +436,7 @@ func (s *Server) apiUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.UpdateEntry(r.Context(), id, store.EntryPatch{
-		Read: in.Read, Starred: in.Starred, Hidden: in.Hidden, Summary: in.Summary, SummaryModel: in.SummaryModel,
+		Read: in.Read, Starred: in.Starred, Hidden: in.Hidden, Summary: in.Summary, SummaryModel: in.SummaryModel, Position: in.Position,
 	}); err != nil {
 		s.fail(w, err)
 		return

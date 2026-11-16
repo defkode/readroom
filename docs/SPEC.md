@@ -18,6 +18,7 @@ Goals, in the owner's words at the start of the project:
 - preservation: an article stays readable even after the original disappears
 - listening: an article read aloud on request (added 2026-11-15)
 - saving a single article by its address, without subscribing to anything (added 2026-11-16)
+- going on with a long article on another device from where it was left (added 2026-11-16)
 - export to EPUB or Markdown for reading on a reMarkable
 - the whole collection exportable as one file
 
@@ -66,7 +67,8 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
   `url`, `title`, `author`, `published_at`, `created_at` (when it arrived here), `preserved_at` and
   preservation bookkeeping (`preserve_requested`, `preserve_attempts`, `preserve_error`), `excerpt`,
   `image` (thumbnail of a picture-only entry), `text_length`, `summary` + `summary_model` (written by a
-  model through the API), `read` + `read_at`, `starred`, `hidden_at`.
+  model through the API), `read` + `read_at`, `starred`, `hidden_at`, and `position` + `position_at`
+  (how far it has been read, as a share of its text, and when that was reported).
 - **entry_bodies** — one row per entry with its HTML: `content` (sanitised, as the feed sent it) and
   `preserved_content` (the local full copy). Kept apart so that lists, counts and searches, which
   read only **entries**, never touch article text.
@@ -268,6 +270,18 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   Back on a list, a message says "Marked as read" with Undo for a few seconds — for every article
   first read on the way, when several were stepped through — so a mistaken tap, or the last unread
   article of a feed, can be put back without finding it again.
+- **Going on where it was left.** While an article is read, the page reports how far the reader
+  has got (`PATCH /entries/{id}` with `position`, 0 to 1), a little after each scroll and when the
+  page is left. The position is a share of the article's text — the text above the top of the
+  screen — not of the page's height, so it means the same sentence on a phone and on a wide screen.
+  Articles that fit on a screen and a half are not tracked.
+  - Opened again, here or on another device, an article read between 3% and 97% **asks**: "You
+    stopped reading at 43%", with Continue there and Dismiss. It does not scroll by itself. While
+    the question stands, the kept position only moves forward, so looking at the top loses nothing;
+    scrolling to that place or past it answers the question.
+  - The main Unread list starts with **Continue reading**: up to three such articles, the one read
+    last first, each with its percentage and a ✕ that takes it off (its position goes back to 0).
+    That is the way back to an article which opening has already taken out of Unread.
 - Lists and articles show an estimated reading time (about 1,400 characters a minute, from the best
   text available: the local copy if there is one, else what the feed sent, which may be only a teaser).
 - A row marks what the owner did to its article with the same filled, accent-coloured icons as the
@@ -401,6 +415,9 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Saving reads the page at once and stores nothing when that fails | the answer — saved, or why not — is on the screen while the page is still at hand; a stub to retry later would sit in Unread as a title-less row |
 | A page is also read with its hidden parts shown, and that reading wins only when it is much longer | a metered paywall sends the whole article and hides it with a style; showing everything on every page would let menus and dialogs into the text, so the plain reading stays the default |
 | Sharing from the phone goes through a page that fills in the app's own form | the web app stays a client of the REST API: the share target only carries the address to the same form a typed address uses |
+| The reading position is a share of the article's text, kept on the server, and reported by the page | a scroll offset or a share of the page's height means a different place at every width and type size; the text above the screen's top is the same on all of them. On the server because the point is another device |
+| A half-read article asks before it scrolls, and the kept place only moves forward until answered | the owner's choice, after the Kindle: jumping by itself is wrong whenever the article is reopened to look something up near the top, and that look must not overwrite the place |
+| Half-read articles are listed at the top of Unread | opening an article marks it read, so on the second device it is no longer where the owner would look for it |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -438,6 +455,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   manifest reaches an already installed app when the browser next refreshes it (up to a day or so).
 - A saved article's author is taken from the page and left empty when the guess looks wrong; its
   excerpt comes from the first paragraphs, which on some sites is an info box.
+- The reading position is one per article, not per device: the last report wins (or the furthest,
+  while the question to continue is unanswered). It is not kept for the listening player.
 - Search is substring matching over title, summary and excerpt — no full-text search of article bodies.
 - No off-site backup of the NAS data yet.
 

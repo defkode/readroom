@@ -175,6 +175,13 @@ CREATE TABLE entry_audio (
 -- for them. It is created when first needed (see SavedFeed).
 ALTER TABLE feeds ADD COLUMN kind TEXT NOT NULL DEFAULT '';
 `,
+	`
+-- How far into an article the owner has read, as a share of its text (0 not begun, 1 finished),
+-- and when that was last reported: what lets another device offer to go on from there.
+ALTER TABLE entries ADD COLUMN position REAL NOT NULL DEFAULT 0;
+ALTER TABLE entries ADD COLUMN position_at TEXT;
+CREATE INDEX entries_reading ON entries (position_at DESC) WHERE position > 0;
+`,
 }
 
 func Open(path string) (*Store, error) {

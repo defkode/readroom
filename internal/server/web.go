@@ -261,6 +261,7 @@ type entriesPage struct {
 	Feed       *store.Feed     // set when the list is one feed, whose settings can be opened here
 	List       *store.Readlist // set when the list is one readlist, which can be renamed, exported and deleted here
 	Notice     bool            // the main Unread list: the place to say that feeds have stopped updating
+	Reading    []*store.Entry  // articles begun and not finished, offered on the main Unread list
 	HiddenView bool            // the list of hidden articles, whose rows offer to show them again
 	ByArrival  bool            // the list is in arrival order, which "this and older" must follow
 	Saved      bool            // the list of saved articles, which is where another is saved
@@ -442,6 +443,13 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if page.Notice {
+		// Opening an article takes it out of Unread, so one left half-read needs a way back.
+		if page.Reading, err = s.Store.InProgress(ctx, 3); err != nil {
+			s.webFail(w, err)
+			return
+		}
+	}
 	if page.Tabs, err = s.viewTabs(ctx, l); err != nil {
 		s.webFail(w, err)
 		return

@@ -39,8 +39,10 @@ type Entry struct {
 	Preserved      bool    `json:"preserved"`
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
-	Audio          string  `json:"audio"` // spoken version: "" (none), "queued", "ready" or "failed"
-	Saved          bool    `json:"saved"` // saved by address rather than brought by a feed; feed_title is then its site
+	Audio          string  `json:"audio"`       // spoken version: "" (none), "queued", "ready" or "failed"
+	Saved          bool    `json:"saved"`       // saved by address rather than brought by a feed; feed_title is then its site
+	Position       float64 `json:"position"`    // how far it has been read, as a share of its text: 0 not begun, 1 finished
+	PositionAt     *string `json:"position_at"` // when a reader last reported that
 	CreatedAt      string  `json:"created_at"`
 
 	// Only filled when a single entry is loaded.
@@ -64,13 +66,13 @@ const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
 e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
-e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), f.kind = 'saved', e.created_at`
+e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), f.kind = 'saved', e.position, e.position_at, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
 		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
-		&e.PreserveError, &e.Audio, &e.Saved, &e.CreatedAt}
+		&e.PreserveError, &e.Audio, &e.Saved, &e.Position, &e.PositionAt, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
 	}
@@ -104,6 +106,39 @@ func readingMinutes(chars int) int {
 	return (chars + readingChars/2) / readingChars
 }
 
+// An article counts as being read between these shares of its text: before
+// ReadingFrom it was only glanced at, past ReadingTo there is nothing left to go back for.
+const (
+	ReadingFrom = 0.03
+	ReadingTo   = 0.97
+)
+
+// Reading reports whether the entry was begun and not finished.
+func (e *Entry) Reading() bool { return e.Position >= ReadingFrom && e.Position <= ReadingTo }
+
+// Percent is how far the entry has been read, in whole percent.
+func (e *Entry) Percent() int { return int(e.Position*100 + 0.5) }
+
+// InProgress lists the articles begun and not finished, the one read last first.
+func (s *Store) InProgress(ctx context.Context, limit int) ([]*Entry, error) {
+	where, args := EntryFilter{InProgress: true}.conditions()
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+` FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+
+		strings.Join(where, " AND ")+` ORDER BY e.position_at DESC LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []*Entry{}
+	for rows.Next() {
+		e, err := scanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 type EntryFilter struct {
 	FeedID     int64
 	Category   *string
@@ -113,6 +148,7 @@ type EntryFilter struct {
 	Preserved  *bool
 	Hidden     bool // the hidden entries instead of the visible ones
 	HasSummary *bool
+	InProgress bool   // begun but not finished, see ReadingFrom and ReadingTo
 	Query      string // substring match on title and summary
 	Before     string // pagination cursor: "published_at,id" of the last item seen
 	Limit      int
@@ -153,6 +189,10 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 		} else {
 			add("e.preserved_at IS NULL")
 		}
+	}
+	if f.InProgress {
+		// "position > 0" is what lets the planner use the index of begun articles.
+		add(fmt.Sprintf("e.position > 0 AND e.position >= %g AND e.position <= %g", ReadingFrom, ReadingTo))
 	}
 	if f.HasSummary != nil {
 		if *f.HasSummary {
@@ -354,6 +394,7 @@ type EntryPatch struct {
 	Hidden       *bool
 	Summary      *string
 	SummaryModel *string
+	Position     *float64 // how far it has been read, 0 to 1
 }
 
 func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
@@ -380,6 +421,10 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, p EntryPatch) error {
 		} else {
 			set = append(set, "hidden_at = NULL")
 		}
+	}
+	if p.Position != nil {
+		set = append(set, "position = ?", "position_at = ?")
+		args = append(args, *p.Position, Now())
 	}
 	if p.Summary != nil {
 		set = append(set, "summary = ?")

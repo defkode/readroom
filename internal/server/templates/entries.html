@@ -13,6 +13,24 @@
   <button class="iconbtn" data-action="dismiss-outage" aria-label="Dismiss" title="Dismiss">{{icon "close"}}</button>
 </div>
 {{end}}
+{{if .Reading}}
+{{/* Articles left half-read, on whichever device: one tap from going on. */}}
+<h2 class="section first">Continue reading</h2>
+<ul class="list reading">
+  {{range .Reading}}
+  <li class="split">
+    <a class="rowbtn" href="/entries/{{.ID}}">
+      <span class="body">
+        <span class="title">{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</span>
+        <span class="sub">{{.Percent}}% read · {{.FeedTitle}}{{if .PositionAt}} · {{ago (deref .PositionAt)}}{{end}}</span>
+        <span class="progress" aria-hidden="true"><i style="width: {{.Percent}}%"></i></span>
+      </span>
+    </a>
+    <button class="iconbtn" data-action="forget-position" data-id="{{.ID}}" aria-label="Remove from Continue reading" title="Remove from Continue reading">{{icon "close"}}</button>
+  </li>
+  {{end}}
+</ul>
+{{end}}
 {{if .Saved}}
 {{/* An address handed over by "Share" is saved at once (see app.js). */}}
 <form class="card row" data-action="save-article"{{if .SaveURL}} data-auto{{end}}>

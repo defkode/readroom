@@ -268,6 +268,16 @@ window.readroomBoot = (signal, soft) => {
       if (playing && playing.id === +el.dataset.id) readroomPlayer.close();
       await refreshAudio();
     },
+    // Go on from where the article was left, here or on another device.
+    'resume-reading'() { resume(true); },
+    'dismiss-resume'() { resume(false); },
+    // Take an article off "Continue reading": it counts as not begun.
+    async 'forget-position'(el) {
+      await api('PATCH', `/entries/${el.dataset.id}`, { position: 0 });
+      const list = el.closest('ul');
+      el.closest('li').remove();
+      if (!list.querySelector('li')) { list.previousElementSibling.remove(); list.remove(); }
+    },
     'mark-all-read'(el) { return markRead(el, {}); },
     'read-through'(el) {
       const body = { through: +el.dataset.id };
@@ -698,6 +708,94 @@ window.readroomBoot = (signal, soft) => {
     showPlaying();
     on(document, 'visibilitychange', watchAudio);
     on(document, 'readroom:player', showPlaying);
+  }
+
+  // ---- reading position ---------------------------------------------------------
+  // How far the article has been read is kept on the server, so another device can
+  // offer to go on from there. It is a share of the article's text, not of the
+  // page's height: the same sentence on a phone and on a wide screen.
+  const content = article && article.querySelector('.content');
+  let resume = () => {};
+  if (content) {
+    const texts = () => {
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let total = 0;
+      for (let node; (node = walker.nextNode());) {
+        const length = node.data.trim().length;
+        if (!length) continue;
+        nodes.push({ node, at: total });
+        total += length;
+      }
+      return { nodes, total };
+    };
+    const boxOf = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect();
+    };
+    // Where reading happens: just under the bar that stays at the top.
+    const edge = () => document.querySelector('.topbar').getBoundingClientRect().bottom + 8;
+    const measure = () => {
+      const { nodes, total } = texts();
+      if (!total) return null;
+      if (content.getBoundingClientRect().bottom <= innerHeight) return 1; // its end is on the screen
+      const line = edge();
+      let low = 0, high = nodes.length - 1;
+      while (low < high) {
+        const mid = (low + high) >> 1;
+        if (boxOf(nodes[mid].node).bottom > line) high = mid; else low = mid + 1;
+      }
+      return nodes[low].at / total;
+    };
+    const seek = (position) => {
+      const { nodes, total } = texts();
+      const target = position * total;
+      let at = 0;
+      while (at < nodes.length - 1 && nodes[at + 1].at <= target) at++;
+      if (nodes.length) scrollTo({ top: scrollY + boxOf(nodes[at].node).top - edge(), behavior: 'smooth' });
+    };
+
+    // An article that fits on a screen or so has no place to come back to.
+    const long = () => content.offsetHeight > innerHeight * 1.5;
+    const stored = +article.dataset.position || 0;
+    const prompt = document.getElementById('resume');
+    // While the offer stands, the place kept is only ever moved forward: looking at
+    // the top of the article must not lose where it was left.
+    let asking = false, sent = stored, timer;
+    const save = (keepalive) => {
+      clearTimeout(timer);
+      if (!long()) return;
+      const position = measure();
+      if (position === null || Math.abs(position - sent) < 0.005 || (asking && position < sent)) return;
+      sent = position;
+      fetch(`/api/v1/entries/${article.dataset.id}`, {
+        method: 'PATCH', keepalive, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: Math.round(position * 1000) / 1000 }),
+      }).catch(() => { /* the next report will do */ });
+    };
+    resume = (go) => {
+      asking = false;
+      if (prompt) prompt.hidden = true;
+      if (go) seek(stored);
+    };
+    if (prompt && stored && long()) {
+      // Not when the browser has already put the page where it was (coming back to it).
+      const here = measure();
+      asking = here === null || Math.abs(here - stored) > 0.02;
+      prompt.hidden = !asking;
+    }
+    on(window, 'scroll', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        // At the place that was kept, or past it: the offer has nothing left to say.
+        if (asking && measure() >= stored - 0.02) resume(false);
+        save(false);
+      }, 1200);
+    }, { passive: true });
+    on(document, 'visibilitychange', () => { if (document.hidden) save(true); });
+    on(window, 'pagehide', () => save(true));
+    signal.addEventListener('abort', () => save(true)); // another page is swapped in
   }
 
   // Moving between articles replaces the page, so Back still leads to the list.

@@ -9,7 +9,7 @@
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
-<article class="article" data-id="{{.Entry.ID}}"{{if .FirstRead}} data-first-read{{end}}>
+<article class="article" data-id="{{.Entry.ID}}"{{if .FirstRead}} data-first-read{{end}}{{if .Entry.Reading}} data-position="{{.Entry.Position}}"{{end}}>
   {{with .Entry}}
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
@@ -30,6 +30,14 @@
     {{icon "archive"}}<span>This feed sends only a teaser of each article.</span>
     <button data-action="preserve" data-id="{{.Entry.ID}}">Get the full article</button>
     <button data-action="preserve-feed" data-feed="{{.Entry.FeedID}}" data-id="{{.Entry.ID}}">Always for this feed</button>
+  </p>
+  {{end}}
+  {{/* Read part of the way, here or on another device: offer to go on from there (shown by app.js). */}}
+  {{if .Entry.Reading}}
+  <p class="teaser resume" id="resume" hidden>
+    {{icon "check"}}<span{{if .Entry.PositionAt}} title="{{date (deref .Entry.PositionAt)}}"{{end}}>You stopped reading at {{.Entry.Percent}}%.</span>
+    <button data-action="resume-reading">Continue there</button>
+    <button data-action="dismiss-resume">Dismiss</button>
   </p>
   {{end}}
   {{/* The spoken version; the script swaps this in again when its state changes. */}}
