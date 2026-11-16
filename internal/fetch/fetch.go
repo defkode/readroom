@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -431,7 +432,8 @@ func (f *Fetcher) preservePending(ctx context.Context, batch int) {
 // preserve stores the readable article and its images inside the database.
 func (f *Fetcher) preserve(ctx context.Context, e *store.Entry) error {
 	content := e.Content
-	if e.URL != "" {
+	// A saved article's text already is its page, read when it was saved.
+	if e.URL != "" && !e.Saved {
 		// Feeds that publish full text are cleaner than a scraped page, so the page
 		// only wins when it has clearly more to offer (i.e. the feed is an excerpt).
 		feedLen := len(htmlx.Text(content))
@@ -485,55 +487,157 @@ func (f *Fetcher) preserve(ctx context.Context, e *store.Entry) error {
 	return f.Store.SavePreserved(ctx, e.ID, htmlx.Render(nodes), assets)
 }
 
-func (f *Fetcher) get(ctx context.Context, rawURL string, limit int64) ([]byte, string, error) {
+// get fetches an address and also says where it was finally served from.
+func (f *Fetcher) get(ctx context.Context, rawURL string, limit int64) (data []byte, ctype, final string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, "", "", &StatusError{Code: resp.StatusCode}
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	data, err = io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if int64(len(data)) > limit {
-		return nil, "", errors.New("response too large")
+		return nil, "", "", errors.New("response too large")
 	}
-	return data, resp.Header.Get("Content-Type"), nil
+	return data, resp.Header.Get("Content-Type"), resp.Request.URL.String(), nil
 }
 
-func (f *Fetcher) readable(ctx context.Context, pageURL string) (string, error) {
-	u, err := url.Parse(pageURL)
+// page is the readable part of a web page, with what the page says about itself.
+type page struct {
+	html    string
+	url     string // where it was served from, after redirects
+	article readability.Article
+}
+
+func (f *Fetcher) read(ctx context.Context, pageURL string) (*page, error) {
+	data, _, final, err := f.get(ctx, pageURL, maxPageBytes)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	data, _, err := f.get(ctx, pageURL, maxPageBytes)
+	u, err := url.Parse(final)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	article, err := readability.FromReader(bytes.NewReader(data), u)
 	if err != nil {
+		return nil, err
+	}
+	p := &page{url: final, article: article}
+	if article.Node != nil {
+		var b strings.Builder
+		if err := article.RenderHTML(&b); err != nil {
+			return nil, err
+		}
+		p.html = b.String()
+	}
+	// Some sites send the whole article and hide most of it with a style until a
+	// script decides the reader may see it. Read the page again with nothing
+	// hidden, and take that reading if it holds clearly more.
+	if doc, shown := reveal(data); shown > 0 {
+		if whole, err := readability.FromDocument(doc, u); err == nil && whole.Node != nil {
+			var b strings.Builder
+			if err := whole.RenderHTML(&b); err == nil && len(htmlx.Text(b.String()))*2 > len(htmlx.Text(p.html))*3 {
+				p.html, p.article = b.String(), whole
+			}
+		}
+	}
+	if p.html == "" {
+		return nil, ErrNotReadable
+	}
+	return p, nil
+}
+
+var displayNone = regexp.MustCompile(`(?i)display\s*:\s*none\s*(!important)?\s*;?`)
+
+// reveal parses a page and shows the elements it hides with a "hidden" attribute
+// or an inline "display: none", reporting how many there were.
+func reveal(data []byte) (doc *html.Node, shown int) {
+	doc, err := html.Parse(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0
+	}
+	htmlx.Walk([]*html.Node{doc}, func(n *html.Node) {
+		if n.Type != html.ElementNode {
+			return
+		}
+		switch n.Data {
+		case "script", "style", "template", "noscript", "dialog", "input":
+			return // never meant to be read
+		}
+		for _, a := range n.Attr {
+			if a.Key == "hidden" {
+				htmlx.DelAttr(n, "hidden")
+				shown++
+				break
+			}
+		}
+		if style := htmlx.Attr(n, "style"); displayNone.MatchString(style) {
+			htmlx.SetAttr(n, "style", displayNone.ReplaceAllString(style, ""))
+			shown++
+		}
+	})
+	return doc, shown
+}
+
+func (f *Fetcher) readable(ctx context.Context, pageURL string) (string, error) {
+	p, err := f.read(ctx, pageURL)
+	if err != nil {
 		return "", err
 	}
-	if article.Node == nil {
-		return "", errors.New("no readable content found")
+	return p.html, nil
+}
+
+// ErrNotReadable means a page answered, but no article could be made out in it.
+var ErrNotReadable = errors.New("no readable content found")
+
+// minArticle is the least text a page must yield to be saved as an article;
+// less than that is a login wall, an error page or a page that needs scripts.
+const minArticle = 200
+
+// Article reads the page at an address as an article to save: its readable text,
+// and the title, author and date the page gives for it. The page is asked for
+// the way any first-time visitor would ask, with no cookies.
+func (f *Fetcher) Article(ctx context.Context, pageURL string) (*store.NewEntry, error) {
+	p, err := f.read(ctx, pageURL)
+	if err != nil {
+		return nil, err
 	}
-	var b strings.Builder
-	if err := article.RenderHTML(&b); err != nil {
-		return "", err
+	content := htmlx.Sanitize(absolutize(p.html, p.url))
+	if utf8.RuneCountInString(htmlx.Flat(content)) < minArticle {
+		return nil, ErrNotReadable
 	}
-	return b.String(), nil
+	now := time.Now().UTC()
+	published := now
+	if t, err := p.article.PublishedTime(); err == nil && !t.IsZero() && t.Before(now) {
+		published = t.UTC()
+	}
+	title := strings.TrimSpace(p.article.Title())
+	if title == "" {
+		title = p.url
+	}
+	// A byline guessed from the page's markup can sweep up the buttons around the name.
+	author := strings.TrimSpace(p.article.Byline())
+	if utf8.RuneCountInString(author) > 60 {
+		author = ""
+	}
+	return &store.NewEntry{
+		GUID: pageURL, URL: p.url, Title: title, Author: author,
+		PublishedAt: published.Format(store.TimeFormat), Content: content,
+	}, nil
 }
 
 func (f *Fetcher) image(ctx context.Context, src string) (*store.Asset, error) {
-	data, ctype, err := f.get(ctx, src, maxImgBytes)
+	data, ctype, _, err := f.get(ctx, src, maxImgBytes)
 	if err != nil {
 		return nil, err
 	}

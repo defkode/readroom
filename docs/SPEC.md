@@ -1,7 +1,7 @@
 # Readroom — specification
 
 What Readroom is, how it behaves, and why it is built this way. This document describes the state of
-the code as of 2026-11-15; the README remains the quick start and API reference.
+the code as of 2026-11-16; the README remains the quick start and API reference.
 
 ## 1. Purpose
 
@@ -17,6 +17,7 @@ Goals, in the owner's words at the start of the project:
   mark articles read, star them, organise them into readlists
 - preservation: an article stays readable even after the original disappears
 - listening: an article read aloud on request (added 2026-11-15)
+- saving a single article by its address, without subscribing to anything (added 2026-11-16)
 - export to EPUB or Markdown for reading on a reMarkable
 - the whole collection exportable as one file
 
@@ -59,7 +60,8 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
   rename; empty = use the feed's), `category` (free text), `preserve`, `preserve_since`, `ai_summary`,
   `keep_days`, `initial_unread` (backlog policy for the first fetch), `teaser` (whether it sends only
   teasers; unknown until checked), HTTP validators (`etag`, `last_modified`), `last_fetched_at`, and
-  health (`last_error`, `fail_count`, `failing_since`, `last_ok_at`).
+  health (`last_error`, `fail_count`, `failing_since`, `last_ok_at`), and `kind`: empty for a
+  subscription, `saved` for the one built-in feed that holds the articles saved by address.
 - **entries** — everything about an article except its text: `feed_id`, `guid` (unique per feed),
   `url`, `title`, `author`, `published_at`, `created_at` (when it arrived here), `preserved_at` and
   preservation bookkeeping (`preserve_requested`, `preserve_attempts`, `preserve_error`), `excerpt`,
@@ -149,6 +151,35 @@ from an image to its entries. After a migration the database is vacuumed and ana
 - Limits: page 10 MB, image 8 MB, 60 images per article, 3 attempts before giving up (the error is
   kept and shown).
 - Preserved images are served from `/assets/<sha256>`.
+
+### Saved articles
+
+- An article can be saved by its address alone, whether or not any feed carries it:
+  `POST /api/v1/articles` with `{url}`. The page is read once, at that moment, and its readable text,
+  title, author and date are stored; its images follow in the background as a local copy. It arrives
+  unread, at the top of Unread.
+- Saved articles live under one built-in feed, "Saved articles", created by the first save. It is
+  never fetched, keeps its articles forever, has AI summaries on, belongs to no category, and is
+  not in Manage feeds or the OPML export; it cannot be unsubscribed from or refreshed. Everything
+  else an article can do — readlists, stars, summaries, listening, export, hiding — works as usual.
+  Where a list names an article's feed, a saved article names its site (`onet.pl`).
+- The same address saved again is recognised (ignoring the fragment and tracking parameters such
+  as `utm_*`) and answers with the article already here, shown again if it had been hidden.
+- Nothing is stored when the page cannot be read: the address does not answer, or yields under 200
+  characters of text (a sign-in wall, a page drawn by scripts). The reply says which.
+- **Pages that hide what they send.** The page is asked for as a first-time visitor would ask: no
+  cookies, no session. Sites that count free articles per browser therefore send the whole text —
+  but some hide most of it with a `hidden` attribute or an inline `display: none` until their
+  script decides the reader may see it. So every page is read twice from the same download, once
+  as sent and once with nothing hidden, and the second reading is taken only when it holds over
+  1.5 times the text. The same applies to local copies of feed articles. A site that sends only
+  the opening to visitors who are not signed in cannot be saved whole this way.
+- **In the app:** "Saved articles" sits under Starred in the feed list, and its page starts with a
+  field for an address; Manage feeds has the same field. After saving, the list is shown with the
+  new article at its top, highlighted.
+- **From a phone:** the installed app registers as a share target (`share_target` in the manifest,
+  Android only). Sharing a page from the browser opens `/save`, which finds the address in what was
+  shared and hands it to the Saved articles page, whose form saves it through the API at once.
 
 ### Excerpts
 
@@ -364,6 +395,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | MP3 from the reference client | plays in every browser and seeks without an index; at 48 kbit/s mono it is transparent for a 24 kHz voice |
 | One player for the whole app, and while it is on, pages are swapped in place rather than loaded | the owner listens while doing other things in the app, and a page load ends any sound; resuming on the next page would leave a gap at every click and is refused by phones without a tap. Only while playing, so ordinary use keeps plain page loads |
 | The swap replaces the whole page body and starts the page script again, instead of a framework or hand-made partial updates | every page keeps being written as a page; the one rule is that listeners are registered through the page's `on()` so they end with it |
+| Saved articles belong to a built-in feed of their own kind, instead of entries without a feed | every list, count, queue and export joins an article to its feed; one more feed, never fetched, gives saved articles all of that with a handful of exceptions rather than a second kind of article everywhere |
+| That feed is created by the first save, not by the migration | a reader that never saves an article shows nothing new, and feed ids in an empty database still start at 1 |
+| Saving reads the page at once and stores nothing when that fails | the answer — saved, or why not — is on the screen while the page is still at hand; a stub to retry later would sit in Unread as a title-less row |
+| A page is also read with its hidden parts shown, and that reading wins only when it is much longer | a metered paywall sends the whole article and hides it with a style; showing everything on every page would let menus and dialogs into the text, so the plain reading stays the default |
+| Sharing from the phone goes through a page that fills in the app's own form | the web app stays a client of the REST API: the share target only carries the address to the same form a typed address uses |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
@@ -394,6 +430,13 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on
   a reMarkable.
 - Thumbnails and article images of entries without a local copy load from the original site.
+- Saving an article reads what the site sends to an anonymous visitor. Articles a site shows only
+  to signed-in subscribers, or builds with scripts, cannot be saved; sending the page's HTML from
+  the owner's own browser (a bookmarklet posting to the API) would cover those.
+- The share target appears on Android only, and only for the installed app; a change to the
+  manifest reaches an already installed app when the browser next refreshes it (up to a day or so).
+- A saved article's author is taken from the page and left empty when the guess looks wrong; its
+  excerpt comes from the first paragraphs, which on some sites is an info box.
 - Search is substring matching over title, summary and excerpt — no full-text search of article bodies.
 - No off-site backup of the NAS data yet.
 
@@ -405,3 +448,4 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Polish interface.
 - Leasing in the summary queue, if more than one summariser runs.
 - A playlist of recordings: playing the next one when one ends.
+- Saving a page as the owner's own browser sees it (`{url, html}`), for sites that need a sign-in.

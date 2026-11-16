@@ -421,6 +421,14 @@ window.readroomBoot = (signal, soft) => {
       try { sessionStorage.setItem(addedKey, JSON.stringify({ id: feed.id, title: feed.title, total: feed.total, at: Date.now() })); } catch { /* no confirmation then */ }
       readroomNav.reload();
     },
+    // Save the article at an address. The reload shows it at the top of the list.
+    async 'save-article'(form) {
+      toast('Fetching the article…');
+      const { created, entry } = await api('POST', '/articles', { url: form.url.value });
+      try { sessionStorage.setItem(savedKey, JSON.stringify({ id: entry.id, title: entry.title, created, at: Date.now() })); } catch { /* no confirmation then */ }
+      // Without the address that was handed over, so coming back here does not save it again.
+      readroomNav.replace(`/?feed_id=${entry.feed_id}`);
+    },
     async 'save-feed'(form) {
       await api('PATCH', `/feeds/${form.dataset.id}`, {
         title: form.title.value,
@@ -461,6 +469,19 @@ window.readroomBoot = (signal, soft) => {
     }
   } catch { /* storage unavailable */ }
 
+  // After saving an article the list is shown afresh: confirm it and point at the row.
+  const savedKey = 'readroom-saved-article';
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(savedKey));
+    sessionStorage.removeItem(savedKey);
+    if (saved && Date.now() - saved.at < 5000) {
+      toast(saved.created ? `Saved “${saved.title}”` : 'Already saved', saved.created ? undefined
+        : { label: 'Open', run: async () => readroomNav.go(`/entries/${saved.id}`) });
+      const row = document.querySelector(`#entries .entry[data-id="${saved.id}"]`);
+      if (row) row.classList.add('fresh');
+    }
+  } catch { /* storage unavailable */ }
+
   const run = async (el, fn) => {
     try { await busy(el, () => fn(el)); } catch (err) { toast(err.message); }
   };
@@ -481,6 +502,10 @@ window.readroomBoot = (signal, soft) => {
     e.preventDefault();
     run(e.submitter || e.target, () => fn(e.target));
   });
+
+  // An address shared from another app arrives in the form already; save it.
+  const handedOver = document.querySelector('form[data-auto]');
+  if (handedOver) handedOver.requestSubmit(handedOver.querySelector('button'));
 
   on(document, 'change', async (e) => {
     const el = e.target;

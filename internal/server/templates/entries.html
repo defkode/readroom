@@ -13,6 +13,13 @@
   <button class="iconbtn" data-action="dismiss-outage" aria-label="Dismiss" title="Dismiss">{{icon "close"}}</button>
 </div>
 {{end}}
+{{if .Saved}}
+{{/* An address handed over by "Share" is saved at once (see app.js). */}}
+<form class="card row" data-action="save-article"{{if .SaveURL}} data-auto{{end}}>
+  <input name="url" inputmode="url" value="{{.SaveURL}}" placeholder="Address of an article to save" required autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Address of an article to save">
+  <button class="btn">{{icon "plus"}} Save</button>
+</form>
+{{end}}
 <div class="filters">
   {{if .HiddenView}}<p class="hint">Hidden articles stay out of every list, count and export. They can be shown again from here.</p>{{end}}
   {{if .Tabs}}<div class="segmented" role="tablist">

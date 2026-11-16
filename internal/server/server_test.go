@@ -48,6 +48,13 @@ func origin(t *testing.T) *httptest.Server {
 	}
 	mux.HandleFunc("/hello", article)
 	mux.HandleFunc("/old", article)
+	// A page that sends its whole text but hides most of it until a script shows it.
+	mux.HandleFunc("/metered", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Metered</title></head><body><article><h1>Metered</h1>`+
+			strings.Repeat(`<p>The opening of the article, which every visitor is shown straight away.</p>`, 4)+
+			`<div style="display: none">`+strings.Repeat(`<p>The rest of the article, sent to everybody but hidden by a style.</p>`, 20)+
+			`<p>The very last sentence.</p></div></article></body></html>`)
+	})
 	mux.HandleFunc("/pixel.png", func(w http.ResponseWriter, r *http.Request) { w.Write(pixel) })
 	// A home page that advertises the feed, an address that moved for good, and one that is gone.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -659,5 +666,88 @@ func TestBacklogAndArrivalOrder(t *testing.T) {
 	a.call("GET", "/api/v1/entries?order=arrival&limit=1&before="+url.QueryEscape(page.Next), nil, &page)
 	if len(page.Entries) != 1 || page.Entries[0].ID == first {
 		t.Fatalf("second page in arrival order repeats or is empty: %+v", page.Entries)
+	}
+}
+
+func TestSavingAnArticle(t *testing.T) {
+	a, site := newApp(t), origin(t)
+
+	// A subscription first, so the saved articles are not simply the only feed.
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml"}, nil)
+
+	var saved struct {
+		Created bool        `json:"created"`
+		Entry   store.Entry `json:"entry"`
+	}
+	resp := a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/hello?utm_source=share#top"}, &saved)
+	e := saved.Entry
+	if resp.StatusCode != http.StatusCreated || !saved.Created || e.Title != "Hello" || !e.Saved || e.Read ||
+		e.URL != site.URL+"/hello" || e.FeedTitle != "127.0.0.1" || e.TextLength < 1000 {
+		t.Fatalf("save article: status %d, %+v", resp.StatusCode, saved)
+	}
+	// Its images are brought in like any local copy, without reading the page again.
+	kept := a.waitPreserved(e.ID)
+	if kept.PreservedContent == nil || !strings.Contains(*kept.PreservedContent, `src="/assets/`) {
+		t.Fatalf("saved article kept no local image: %+v", kept.PreservedContent)
+	}
+
+	// A page that hides most of what it sends is saved whole.
+	var metered struct {
+		Entry store.Entry `json:"entry"`
+	}
+	a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/metered"}, &metered)
+	a.call("GET", fmt.Sprintf("/api/v1/entries/%d", metered.Entry.ID), nil, &metered.Entry)
+	if !strings.Contains(metered.Entry.Content, "The very last sentence.") {
+		t.Fatalf("hidden part of the article was not saved: %d characters", metered.Entry.TextLength)
+	}
+
+	// The same address, however it was shared, is the same article.
+	resp = a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/hello?fbclid=abc"}, &saved)
+	if resp.StatusCode != http.StatusOK || saved.Created || saved.Entry.ID != e.ID {
+		t.Fatalf("save again: status %d, %+v", resp.StatusCode, saved)
+	}
+
+	// A page with nothing to read, and one that is not there, save nothing and say why.
+	var problem map[string]string
+	if resp = a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/"}, &problem); resp.StatusCode != http.StatusUnprocessableEntity ||
+		!strings.Contains(problem["error"], "No article text") {
+		t.Fatalf("save a page without an article: status %d, %v", resp.StatusCode, problem)
+	}
+	if resp = a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/missing"}, &problem); resp.StatusCode != http.StatusUnprocessableEntity ||
+		!strings.Contains(problem["error"], "HTTP 404") {
+		t.Fatalf("save a missing page: status %d, %v", resp.StatusCode, problem)
+	}
+
+	// The saved articles are a feed of their own kind: listed, but not a subscription.
+	var feeds []store.Feed
+	a.call("GET", "/api/v1/feeds", nil, &feeds)
+	var home *store.Feed
+	for i := range feeds {
+		if feeds[i].Saved {
+			home = &feeds[i]
+		}
+	}
+	if len(feeds) != 2 || home == nil || home.Total != 2 || home.Unread != 2 || home.KeepDays != 0 {
+		t.Fatalf("feeds after saving: %+v", feeds)
+	}
+	if resp = a.call("DELETE", fmt.Sprintf("/api/v1/feeds/%d", home.ID), nil, nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unsubscribing from saved articles: got %d, want 400", resp.StatusCode)
+	}
+	if resp = a.call("POST", fmt.Sprintf("/api/v1/feeds/%d/refresh", home.ID), nil, nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("refreshing saved articles: got %d, want 400", resp.StatusCode)
+	}
+	resp = a.call("GET", "/api/v1/export/opml", nil, nil)
+	if body, _ := io.ReadAll(resp.Body); strings.Contains(string(body), "readroom:saved") {
+		t.Fatalf("OPML export lists the saved articles as a feed: %s", body)
+	}
+
+	// Sharing a page from another app lands on the saved list with its address ready to save.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", a.url+"/save?title=Hello&text="+url.QueryEscape("Read this: https://example.com/a?b=1"), nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	shared, err := noFollow.Do(req)
+	want := fmt.Sprintf("/?feed_id=%d&save=%s", home.ID, url.QueryEscape("https://example.com/a?b=1"))
+	if err != nil || shared.StatusCode != http.StatusSeeOther || shared.Header.Get("Location") != want {
+		t.Fatalf("share target: %v, status %d to %q, want %q", err, shared.StatusCode, shared.Header.Get("Location"), want)
 	}
 }

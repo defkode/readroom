@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/v1/feeds/{id}/refresh", s.apiRefreshFeed)
 	api.HandleFunc("GET /api/v1/categories", s.apiCategories)
 
+	api.HandleFunc("POST /api/v1/articles", s.apiSaveArticle)
 	api.HandleFunc("GET /api/v1/entries", s.apiEntries)
 	api.HandleFunc("POST /api/v1/entries/mark-read", s.apiMarkRead)
 	api.HandleFunc("POST /api/v1/entries/mark-unread", s.apiMarkUnread)
@@ -104,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	web := http.NewServeMux()
 	web.HandleFunc("GET /{$}", s.pageEntries)
 	web.HandleFunc("GET /browse", s.pageBrowse)
+	web.HandleFunc("GET /save", s.pageSave)
 	web.HandleFunc("GET /entries/{id}", s.pageEntry)
 	web.HandleFunc("GET /feeds", s.pageFeeds)
 	web.HandleFunc("GET /readlists", s.pageReadlists)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,7 @@ type Entry struct {
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
 	Audio          string  `json:"audio"` // spoken version: "" (none), "queued", "ready" or "failed"
+	Saved          bool    `json:"saved"` // saved by address rather than brought by a feed; feed_title is then its site
 	CreatedAt      string  `json:"created_at"`
 
 	// Only filled when a single entry is loaded.
@@ -62,13 +64,13 @@ const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
 e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
-e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((`+audioState+`), ''), e.created_at`
+e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), f.kind = 'saved', e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
 		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
-		&e.PreserveError, &e.Audio, &e.CreatedAt}
+		&e.PreserveError, &e.Audio, &e.Saved, &e.CreatedAt}
 	if len(extra) > 0 {
 		dest = append(dest, &e.Content, &e.PreservedContent)
 	}
@@ -79,6 +81,12 @@ func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) 
 		return nil, err
 	}
 	e.ReadingMinutes = readingMinutes(e.TextLength)
+	if e.Saved {
+		// Where a list names the feed, a saved article names the site it came from.
+		if u, err := url.Parse(e.URL); err == nil && u.Host != "" {
+			e.FeedTitle = strings.TrimPrefix(u.Hostname(), "www.")
+		}
+	}
 	return &e, nil
 }
 
@@ -127,7 +135,7 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 		add("e.feed_id = ?", f.FeedID)
 	}
 	if f.Category != nil {
-		add("f.category = ?", *f.Category)
+		add("f.category = ? AND f.kind = ''", *f.Category) // saved articles belong to no category
 	}
 	if f.ReadlistID != 0 {
 		add("e.id IN (SELECT entry_id FROM readlist_entries WHERE readlist_id = ?)", f.ReadlistID)
@@ -253,6 +261,19 @@ FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_i
 		e.Readlists = append(e.Readlists, rid)
 	}
 	return e, rows.Err()
+}
+
+// EntryByGUID finds a feed's entry by the identifier it arrived under.
+func (s *Store) EntryByGUID(ctx context.Context, feedID int64, guid string) (*Entry, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM entries WHERE feed_id = ? AND guid = ?`, feedID, guid).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.Entry(ctx, id)
 }
 
 // NewEntry is an item parsed from a feed.
@@ -392,7 +413,7 @@ func (sc ReadScope) where() (string, []any) {
 		args = append(args, sc.FeedID)
 	}
 	if sc.Category != nil {
-		q += ` AND feed_id IN (SELECT id FROM feeds WHERE category = ?)`
+		q += ` AND feed_id IN (SELECT id FROM feeds WHERE category = ? AND kind = '')`
 		args = append(args, *sc.Category)
 	}
 	if sc.Through != 0 {

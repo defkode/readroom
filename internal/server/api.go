@@ -150,6 +150,10 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	id := pathID(r, "id")
 	p := store.FeedPatch{Title: in.Title, Category: in.Category, Preserve: in.Preserve, AISummary: in.AISummary, KeepDays: in.KeepDays}
+	if current, err := s.Store.Feed(r.Context(), id); err == nil && current.Saved && in.URL != nil && *in.URL != current.URL {
+		writeError(w, http.StatusBadRequest, "saved articles have no feed address to change")
+		return
+	}
 	if in.URL != nil {
 		u, ok := validFeedURL(*in.URL)
 		if !ok {
@@ -203,6 +207,10 @@ const keepDaysRule = "keep_days must be a number of days from 1 to 36500, or 0 t
 func validKeepDays(n int) bool { return n >= 0 && n <= 36500 }
 
 func (s *Server) apiDeleteFeed(w http.ResponseWriter, r *http.Request) {
+	if feed, err := s.Store.Feed(r.Context(), pathID(r, "id")); err == nil && feed.Saved {
+		writeError(w, http.StatusBadRequest, "saved articles are not a subscription; hide the ones you no longer want")
+		return
+	}
 	if err := s.Store.DeleteFeed(r.Context(), pathID(r, "id")); err != nil {
 		s.fail(w, err)
 		return
@@ -214,6 +222,10 @@ func (s *Server) apiRefreshFeed(w http.ResponseWriter, r *http.Request) {
 	feed, err := s.Store.Feed(r.Context(), pathID(r, "id"))
 	if err != nil {
 		s.fail(w, err)
+		return
+	}
+	if feed.Saved {
+		writeError(w, http.StatusBadRequest, "saved articles are not fetched from a feed")
 		return
 	}
 	// Force a full fetch rather than a conditional one.
@@ -232,6 +244,99 @@ func (s *Server) apiCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cats)
+}
+
+// --- saved articles -----------------------------------------------------------
+
+// trackers are query parameters that say where a link was clicked, not which
+// page it leads to; without them the same article is recognised when saved again.
+var trackers = regexp.MustCompile(`^(utm_.*|fbclid|gclid|igshid|mc_cid|mc_eid)$`)
+
+func articleURL(raw string) (string, bool) {
+	raw, ok := validFeedURL(raw)
+	if !ok {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	u.Fragment = ""
+	if q := u.Query(); len(q) > 0 {
+		for name := range q {
+			if trackers.MatchString(strings.ToLower(name)) {
+				q.Del(name)
+			}
+		}
+		u.RawQuery = q.Encode()
+	}
+	return u.String(), true
+}
+
+// saveError says in plain words why a page could not be saved as an article.
+func saveError(err error) string {
+	var status *fetch.StatusError
+	switch {
+	case errors.Is(err, fetch.ErrNotReadable):
+		return "No article text could be read from that page. It may need a sign-in, or be drawn by scripts."
+	case errors.As(err, &status):
+		return fmt.Sprintf("That address answered with an error (HTTP %d).", status.Code)
+	}
+	return "Could not reach that address: " + err.Error()
+}
+
+// apiSaveArticle saves the article at an address, which no feed needs to have
+// brought. The page is read once, now; its images follow in the background. The
+// same address saved again answers with the article already here.
+func (s *Server) apiSaveArticle(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		URL string `json:"url"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	ctx := r.Context()
+	pageURL, ok := articleURL(in.URL)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "url must be the http(s) address of an article")
+		return
+	}
+	feed, err := s.Store.SavedFeed(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if e, err := s.Store.EntryByGUID(ctx, feed.ID, pageURL); err == nil {
+		if e.Hidden {
+			// Asked for again: it is wanted after all.
+			shown := false
+			s.Store.UpdateEntry(ctx, e.ID, store.EntryPatch{Hidden: &shown})
+			e.Hidden = false
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"created": false, "entry": e})
+		return
+	}
+	item, err := s.Fetcher.Article(ctx, pageURL)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, saveError(err))
+		return
+	}
+	if _, err := s.Store.AddEntries(ctx, feed.ID, []store.NewEntry{*item}); err != nil {
+		s.fail(w, err)
+		return
+	}
+	e, err := s.Store.EntryByGUID(ctx, feed.ID, pageURL)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	// The text is here; the images are brought in like any other local copy.
+	if err := s.Store.RequestPreserve(ctx, e.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.Fetcher.Kick()
+	writeJSON(w, http.StatusCreated, map[string]any{"created": true, "entry": e})
 }
 
 // --- entries ----------------------------------------------------------------
@@ -690,6 +795,9 @@ func (s *Server) apiExportOPML(w http.ResponseWriter, r *http.Request) {
 	doc := opml{Version: "2.0", Title: "readroom"}
 	groups := map[string]int{}
 	for _, f := range feeds {
+		if f.Saved {
+			continue // not a subscription
+		}
 		o := opmlOutline{Text: f.Title, Title: f.Title, Type: "rss", XMLURL: f.URL, HTMLURL: f.SiteURL}
 		if f.Category == "" {
 			doc.Body = append(doc.Body, o)

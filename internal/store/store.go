@@ -169,6 +169,12 @@ CREATE TABLE entry_audio (
 	data         BLOB                      -- last, so reading the columns above never touches it
 );
 `,
+	`
+-- Articles the owner saved by address, which no feed brought, live under one built-in
+-- feed of kind 'saved' that is never fetched, so everything an article can do works
+-- for them. It is created when first needed (see SavedFeed).
+ALTER TABLE feeds ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+`,
 }
 
 func Open(path string) (*Store, error) {

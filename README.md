@@ -5,6 +5,7 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 - Web app for phone, tablet and desktop (installable: "Add to Home Screen" / "Install app")
 - REST API for everything the UI does — summaries, read/starred, readlists, exports
 - Articles read aloud on request, by whatever text-to-speech you run yourself
+- Save any single article by its address — from a field in the app, or by sharing a page to the installed app on Android
 - Per-feed settings: name, category, and whether to keep full local copies of articles (and since when)
 - Preserved articles (text + images) live inside the database, so they survive the original going away
 - Export an article or a readlist as EPUB or Markdown; download the whole collection as one `.db` file
@@ -45,6 +46,7 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, ai_summary?, keep_days?, unread?}` (`ai_summary` is on unless sent as `false`; `unread`: how much of the backlog starts unread — `recent` by default, `latest`, `all` or `none`); `url` may be a feed or a page that leads to one, and `422` explains an address that is neither. Feeds report their health (`fail_count`, `failing_since`, `last_ok_at`, `broken`, `stale`) and `teaser_only`, set when their articles are far longer on the site than in the feed |
 | `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary`, `keep_days` (default 365; `0` keeps articles forever) |
 | `POST /feeds/{id}/refresh` | fetch now |
+| `POST /articles` | `{url}` — save the article at an address, no feed needed: the page is read as an anonymous visitor would get it (text hidden by a style included), and stored with its images under the built-in "Saved articles" feed (`saved: true` in `GET /feeds`). Answers `201` with `{created: true, entry}`, `200` with `created: false` when that address is already saved, `422` with the reason when no article could be read |
 | `GET /entries` | hidden articles are left out unless `hidden=true` asks for them instead; filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc` or `order=arrival` (newest arrivals first), `limit`; page with `before=<next>` |
 | `GET /entries/{id}` | includes `content` and `preserved_content`; every entry carries `reading_minutes`, an estimate from its text length |
 | `PATCH /entries/{id}` | any of `read`, `starred`, `hidden`, `summary`, `summary_model` |

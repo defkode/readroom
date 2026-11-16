@@ -15,6 +15,12 @@
   <button class="btn">{{icon "plus"}} Subscribe</button>
 </form>
 
+{{/* An article no feed brings: saved by its address, and kept under Saved articles. */}}
+<form class="card row" data-action="save-article">
+  <input name="url" inputmode="url" placeholder="Address of a single article to save" required autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Address of a single article to save">
+  <button class="btn">{{icon "plus"}} Save article</button>
+</form>
+
 {{if .Broken}}
 <h2 class="section attention">{{icon "alert"}}Needs attention</h2>
 <ul class="list">

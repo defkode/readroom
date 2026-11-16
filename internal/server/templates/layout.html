@@ -37,6 +37,7 @@
   <symbol id="i-audio" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" stroke-linejoin="round" d="M8 5.5v13l10.5-6.5z"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path stroke-width="3.2" d="M8 6v12M16 6v12"/></symbol>
+  <symbol id="i-saved" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 12v5M9.5 14.5h5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
   <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></symbol>
@@ -186,6 +187,7 @@
     <li><a href="/" class="{{if eq .Active "view:unread"}}on{{end}}">{{icon "unread"}}<span>Unread</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a></li>
     <li><a href="/?view=all" class="{{if eq .Active "view:all"}}on{{end}}">{{icon "all"}}<span>All articles</span></a></li>
     <li><a href="/?view=starred" class="{{if eq .Active "view:starred"}}on{{end}}">{{icon "star"}}<span>Starred</span></a></li>
+    {{with .Saved}}<li><a href="/?feed_id={{.ID}}" class="{{if eq $.Active (printf "feed:%d" .ID)}}on{{end}}">{{icon "saved"}}<span>Saved articles</span>{{if .Unread}}<b>{{.Unread}}</b>{{end}}</a></li>{{end}}
   </ul>
   {{if .Readlists}}
   <h2>Readlists</h2>

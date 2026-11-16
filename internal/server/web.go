@@ -180,6 +180,7 @@ type shell struct {
 	Unread    int
 	Groups    []navGroup
 	Broken    []*store.Feed // feeds that have stopped updating, for the notice and the Manage page
+	Saved     *store.Feed   // the home of articles saved by address; not one of the Groups
 	Readlists []*store.Readlist
 	Page      any
 }
@@ -196,6 +197,10 @@ func (s *Server) shell(r *http.Request, title, tab, active string) (*shell, erro
 	sh := &shell{Title: title, Tab: tab, Active: active, Auth: s.Token != "", Readlists: lists}
 	for _, f := range feeds {
 		sh.Unread += f.Unread
+		if f.Saved {
+			sh.Saved = f
+			continue
+		}
 		if f.Broken {
 			sh.Broken = append(sh.Broken, f)
 		}
@@ -258,6 +263,8 @@ type entriesPage struct {
 	Notice     bool            // the main Unread list: the place to say that feeds have stopped updating
 	HiddenView bool            // the list of hidden articles, whose rows offer to show them again
 	ByArrival  bool            // the list is in arrival order, which "this and older" must follow
+	Saved      bool            // the list of saved articles, which is where another is saved
+	SaveURL    string          // an address handed over to be saved at once (shared from another app)
 	Categories []string        // for the feed settings sheet
 	Lists      listsSheet      // for the readlists sheet
 	Empty      string
@@ -317,6 +324,9 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 		}
 		id := strconv.FormatInt(feed.ID, 10)
 		l.feed, l.title, l.tab, l.active = feed, feed.Title, "browse", "feed:"+id
+		if feed.Saved {
+			l.empty = "Nothing saved yet. Paste an article's address above, or share a page to Readroom from your phone's browser."
+		}
 		l.scope.Set("feed_id", id)
 	case f.Category != nil:
 		l.title, l.tab, l.active = *f.Category, "browse", "cat:"+*f.Category
@@ -409,6 +419,10 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 	for k := range l.scope {
 		page.Hidden[k] = l.scope.Get(k)
 	}
+	if l.feed != nil && l.feed.Saved {
+		// Not a subscription: no feed settings, but the place to save another article.
+		page.Feed, page.Saved, page.SaveURL = nil, true, q.Get("save")
+	}
 	if next := cursor(entries, f); next != "" {
 		more := url.Values{"view": {l.view}, "before": {next}, "partial": {"1"}}
 		if f.Query != "" {
@@ -432,7 +446,7 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if l.feed != nil {
+	if page.Feed != nil {
 		if page.Categories, err = s.Store.Categories(ctx); err != nil {
 			s.webFail(w, err)
 			return
@@ -463,6 +477,29 @@ func (s *Server) pageBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "browse", "layout.html", sh)
+}
+
+var sharedLink = regexp.MustCompile(`https?://[^\s<>"]+`)
+
+// pageSave is where another app's "Share" lands (see the manifest): it finds the
+// address in what was shared and hands it to the saved articles' page, whose
+// form saves it through the API like one typed in.
+func (s *Server) pageSave(w http.ResponseWriter, r *http.Request) {
+	feed, err := s.Store.SavedFeed(r.Context())
+	if err != nil {
+		s.webFail(w, err)
+		return
+	}
+	q := r.URL.Query()
+	to := url.Values{"feed_id": {strconv.FormatInt(feed.ID, 10)}}
+	// Browsers share a page as its address, or as text that ends with it.
+	for _, field := range []string{"url", "text", "title"} {
+		if link := sharedLink.FindString(q.Get(field)); link != "" {
+			to.Set("save", link)
+			break
+		}
+	}
+	http.Redirect(w, r, "/?"+to.Encode(), http.StatusSeeOther)
 }
 
 type viewTab struct {
@@ -630,6 +667,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
   "display": "standalone",
   "background_color": "#f1f1f3",
   "theme_color": "#f1f1f3",
+  "share_target": {"action": "/save", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}},
   "icons": [
     {"src": "/icon/192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
     {"src": "/icon/512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}

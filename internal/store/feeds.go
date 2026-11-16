@@ -33,6 +33,7 @@ type Feed struct {
 	InitialUnread string  `json:"-"`               // backlog policy for the first fetch, see TrimBacklog
 	TeaserOnly    bool    `json:"teaser_only"`     // its articles are far longer on their pages than in the feed
 	TeaserChecked bool    `json:"-"`               // whether that has been looked into yet
+	Saved         bool    `json:"saved"`           // the built-in home of articles saved by address; never fetched
 	CreatedAt     string  `json:"created_at"`
 	Unread        int     `json:"unread"`
 	Total         int     `json:"total"`
@@ -41,7 +42,7 @@ type Feed struct {
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
        f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
-       f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, f.teaser IS NOT NULL, coalesce(f.teaser, 0),
+       f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, f.teaser IS NOT NULL, coalesce(f.teaser, 0), f.kind = 'saved',
        (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL),
        (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL)
@@ -51,7 +52,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
 		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
-		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.TeaserChecked, &f.TeaserOnly, &f.LatestEntryAt,
+		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.TeaserChecked, &f.TeaserOnly, &f.Saved, &f.LatestEntryAt,
 		&f.Unread, &f.Total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -67,7 +68,7 @@ func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 		f.Title = f.URL
 	}
 	f.Broken = f.FailCount >= BrokenAfter
-	if !f.Broken && f.LatestEntryAt != nil {
+	if !f.Broken && !f.Saved && f.LatestEntryAt != nil {
 		f.Stale = *f.LatestEntryAt < time.Now().UTC().Add(-StaleAfter).Format(TimeFormat)
 	}
 	return &f, nil
@@ -95,6 +96,17 @@ func (s *Store) Feed(ctx context.Context, id int64) (*Feed, error) {
 	return scanFeed(s.db.QueryRowContext(ctx, feedSelect+` WHERE f.id = ?`, id))
 }
 
+// SavedFeed returns the built-in feed that holds the articles saved by address,
+// creating it the first time. It keeps its articles forever and is never fetched.
+func (s *Store) SavedFeed(ctx context.Context) (*Feed, error) {
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO feeds (url, kind, custom_title, ai_summary, keep_days, created_at)
+VALUES ('readroom:saved', 'saved', 'Saved articles', 1, 0, ?) ON CONFLICT (url) DO NOTHING`, Now()); err != nil {
+		return nil, err
+	}
+	return scanFeed(s.db.QueryRowContext(ctx, feedSelect+` WHERE f.kind = 'saved'`))
+}
+
 // FeedsDue returns the feeds whose next fetch is due: never fetched, or last
 // fetched longer ago than the interval. A failing feed is retried less and less
 // often (the interval doubles with each failure, up to a day), so a dead address
@@ -102,7 +114,7 @@ func (s *Store) Feed(ctx context.Context, id int64) (*Feed, error) {
 func (s *Store) FeedsDue(ctx context.Context, interval time.Duration) ([]*Feed, error) {
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, feedSelect+
-		` WHERE f.last_fetched_at IS NULL OR f.last_fetched_at < ? ORDER BY f.last_fetched_at`,
+		` WHERE f.kind = '' AND (f.last_fetched_at IS NULL OR f.last_fetched_at < ?) ORDER BY f.last_fetched_at`,
 		now.Add(-interval).Format(TimeFormat))
 	if err != nil {
 		return nil, err
