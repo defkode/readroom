@@ -9,7 +9,7 @@
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
-<article class="article" data-id="{{.Entry.ID}}"{{if .FirstRead}} data-first-read{{end}}{{if .Entry.Reading}} data-position="{{.Entry.Position}}"{{end}}>
+<article class="article" data-id="{{.Entry.ID}}" data-print-name="{{.PrintName}}"{{if .FirstRead}} data-first-read{{end}}{{if .Entry.Reading}} data-position="{{.Entry.Position}}"{{end}}>
   {{with .Entry}}
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
@@ -66,6 +66,8 @@
   <script src="{{static "folds.js"}}"></script>
   {{end}}
   <div class="content">{{html .Entry.Body}}</div>
+  {{/* Printed, the article ends with the way back to its original. */}}
+  {{if .Entry.URL}}<footer class="source print-only">{{.QR}}<p><b>Original</b>{{.Entry.URL}}</p></footer>{{end}}
   {{/* Filled in by the script from the list this article was opened from. */}}
   <nav class="neighbours" aria-label="Articles in this list" hidden>
     <a class="prev" rel="prev" hidden><small>Previous</small><span></span></a>

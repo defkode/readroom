@@ -530,6 +530,9 @@ type entryPage struct {
 	Paragraph []string
 	// AudioUntil is the day the recording will be deleted, e.g. "14 Dec".
 	AudioUntil string
+	// On paper only: a QR code of the original's address, and a short name for the file a print is saved as.
+	QR        template.HTML
+	PrintName string
 }
 
 // listsSheet is the readlists sheet's data: every list, and for an article which hold it.
@@ -572,6 +575,10 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		member[lid] = true
 	}
 	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead, Lists: listsSheet{EntryID: e.ID}}
+	page.PrintName = printName(e)
+	if e.URL != "" {
+		page.QR = qrSVG(e.URL)
+	}
 	if made, err := time.Parse(store.TimeFormat, e.AudioAt); err == nil {
 		until := made.AddDate(0, 0, store.AudioKeepDays).Format(store.TimeFormat)
 		page.AudioUntil = shortDay(&until)
@@ -588,6 +595,29 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	sh.Page = page
 	s.render(w, "entry", "layout.html", sh)
+}
+
+// printName is what a printed article is called: browsers name the PDF after the
+// page's title, and a whole headline with the app's name makes an unwieldy file.
+// It is the source and the headline's first sentence or so, e.g.
+// "onet.pl - Polski profesor pracuje z twórcami AI w USA".
+func printName(e *store.Entry) string {
+	const longest = 60
+	title := strings.Join(strings.Fields(e.Title), " ")
+	if cut := strings.IndexAny(title, ".?!:"); cut >= 20 {
+		title = title[:cut]
+	}
+	if r := []rune(title); len(r) > longest {
+		title = string(r[:longest])
+		if cut := strings.LastIndex(title, " "); cut > longest/2 {
+			title = title[:cut]
+		}
+	}
+	title = strings.Trim(title, " ,;-–—")
+	if title == "" {
+		return e.FeedTitle
+	}
+	return e.FeedTitle + " - " + title
 }
 
 var blankLines = regexp.MustCompile(`\n\s*\n|\n`)

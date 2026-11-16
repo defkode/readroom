@@ -558,3 +558,32 @@ body.reader #player, body.bare #player { bottom: 0; padding-bottom: var(--safe-b
 .list.reading > li > .iconbtn .icon { width: 16px; height: 16px; }
 .progress { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: var(--bg); overflow: hidden; }
 .progress i { display: block; height: 100%; border-radius: 2px; background: var(--accent); opacity: .7; }
+
+/* ---- on paper ------------------------------------------------------------- */
+/* A printed page (or a PDF) is the article and nothing else: no navigation, no
+   buttons, nothing about its state here. It gains what paper lacks instead: the
+   way back to the original, as a QR code and its address at the very end. */
+.print-only { display: none; }
+@media print {
+  @page { margin: 18mm 17mm; }
+  html:root, html:root[data-theme], html:root:not([data-theme]) {
+    --bg: #fff; --surface: #fff; --surface-2: #eee; --text: #111; --muted: #555; --faint: #888;
+    --sep: rgba(0, 0, 0, .2); --accent: #111; --accent-soft: #f2f2f2; color-scheme: light;
+  }
+  body, body.reader { background: #fff; }
+  .sidebar, .show-sidebar, .topbar, .tabbar, #player, #toast, dialog, .menu,
+  .article .status, .article .teaser, .article .audio, .neighbours, .content iframe { display: none !important; }
+  .main, body.reader .main { margin: 0; padding: 0; }
+  main { padding: 0; }
+  .article { max-width: none; padding: 0; }
+  .print-only { display: block; }
+  .article .meta a { font-weight: 600; text-decoration: none; }
+  .article .source { display: flex; align-items: center; gap: 5mm; margin-top: 10mm; padding-top: 4mm; border-top: 1px solid var(--sep); break-inside: avoid; }
+  .article .source svg { flex: none; width: 25mm; height: 25mm; margin: -1.5mm; }
+  .article .source p { min-width: 0; font-size: 8pt; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+  .article .source b { display: block; margin-bottom: 1mm; font-size: 7pt; letter-spacing: .08em; text-transform: uppercase; color: var(--text); }
+  .article details.summary { break-inside: avoid; }
+  .content h2, .content h3, .content h4 { break-after: avoid; }
+  .content img, .content figure, .content pre, .content table, .content blockquote { break-inside: avoid; }
+  .content p { orphans: 3; widows: 3; }
+}

@@ -813,3 +813,16 @@ func TestReadingPosition(t *testing.T) {
 		t.Fatalf("a finished article is still offered: %+v", e)
 	}
 }
+
+func TestPrintedArticle(t *testing.T) {
+	if got := printName(&store.Entry{FeedTitle: "onet.pl", Title: `Polski profesor pracuje z twórcami AI w USA. Mówi, czego ludzie nie dostrzegają. "Świat zmieni się nie do poznania"`}); got != "onet.pl - Polski profesor pracuje z twórcami AI w USA" {
+		t.Fatalf("print name of a long headline: %q", got)
+	}
+	if got := printName(&store.Entry{FeedTitle: "Blog", Title: "A headline of one sentence that simply goes on and on without ever reaching a full stop"}); len(got) > 70 || strings.HasSuffix(got, " ") {
+		t.Fatalf("print name of an endless headline: %q", got)
+	}
+	code := string(qrSVG("https://example.com/an/article"))
+	if !strings.HasPrefix(code, "<svg") || !strings.Contains(code, `<path fill="#000" d="M`) {
+		t.Fatalf("QR code is not a drawn SVG: %.80s", code)
+	}
+}

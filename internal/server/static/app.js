@@ -798,6 +798,14 @@ window.readroomBoot = (signal, soft) => {
     signal.addEventListener('abort', () => save(true)); // another page is swapped in
   }
 
+  // A browser names a saved print after the page's title: for the time of printing
+  // that is a short name instead of the whole headline and the app's name.
+  if (article && article.dataset.printName) {
+    const title = document.title;
+    on(window, 'beforeprint', () => { document.title = article.dataset.printName; });
+    on(window, 'afterprint', () => { document.title = title; });
+  }
+
   // Moving between articles replaces the page, so Back still leads to the list.
   on(document, 'click', (e) => {
     const link = e.target.closest('.neighbours a');

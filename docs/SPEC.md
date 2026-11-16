@@ -41,6 +41,7 @@ One static Go binary and one SQLite file.
 | Article extraction | `go-readability` (Readeck fork) | pulls the readable text out of a page |
 | Sanitising | `bluemonday` UGC policy | feed and page HTML is untrusted |
 | Markdown | `html-to-markdown` | |
+| QR codes | `rsc.io/qr` | small, no dependencies of its own; for the printed article |
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
 | UI | server-rendered `html/template` + small vanilla scripts (`app.js` drives a page, `player.js` the player and in-place page changes, `prefs.js`, `folds.js`, `transitions.js`) | no build step, no vendored framework; the script is a client of the same REST API |
 
@@ -315,6 +316,14 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   link and embedded preserved images; WebP is converted to PNG; images that were never downloaded are
   left out).
 - **Markdown** with YAML front matter, for one article or a readlist.
+- **Print:** printing an article from the browser (or saving it as a PDF) gives the article alone,
+  in dark ink on white whatever the theme: no navigation, buttons, reading status, player or
+  offers. The AI summary stays if it is unfolded. In their place the page gains what paper lacks —
+  a footer after the last line, with a QR code of the original's address and the address in full. The
+  code is drawn by the server as inline SVG, so nothing is loaded from elsewhere. For the time of
+  printing the page's title becomes a short name, the source and the headline's first sentence
+  (`onet.pl - Polski profesor pracuje z twórcami AI w USA`), because that is what browsers call
+  the saved file.
 - **Whole collection:** `GET /api/v1/export/db` streams a consistent snapshot of the SQLite file —
   feeds, articles, images and readlists in one file.
 
@@ -418,6 +427,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | The reading position is a share of the article's text, kept on the server, and reported by the page | a scroll offset or a share of the page's height means a different place at every width and type size; the text above the screen's top is the same on all of them. On the server because the point is another device |
 | A half-read article asks before it scrolls, and the kept place only moves forward until answered | the owner's choice, after the Kindle: jumping by itself is wrong whenever the article is reopened to look something up near the top, and that look must not overwrite the place |
 | Half-read articles are listed at the top of Unread | opening an article marks it read, so on the second device it is no longer where the owner would look for it |
+| Printing is a stylesheet for the article page, not another export format | the browser already makes a good PDF of the page as the owner set its type; it only had to lose the interface and gain the way back to the original |
+| The QR code is drawn on the server (`rsc.io/qr`) into the page | a script library would have to be vendored, and a picture service would break "everything embedded" |
 | Name "Readroom" | a plain noun for the thing, in the spirit of ONCE product names; "feedkeep" was the working name |
 | Vanilla script instead of htmx | the UI stays a thin client of the public API, with nothing vendored |
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
