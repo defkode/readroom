@@ -324,8 +324,9 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 		}
 		id := strconv.FormatInt(feed.ID, 10)
 		l.feed, l.title, l.tab, l.active = feed, feed.Title, "browse", "feed:"+id
-		if feed.Saved {
-			l.empty = "Nothing saved yet. Paste an article's address above, or share a page to Readroom from your phone's browser."
+		if feed.Saved && l.view == "" {
+			// A collection the owner made, like a readlist: what was read is still wanted here.
+			l.view = "all"
 		}
 		l.scope.Set("feed_id", id)
 	case f.Category != nil:
@@ -360,6 +361,11 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 		l.title, l.tab, l.active = "Hidden articles", "manage", "hidden"
 	default:
 		l.view = "all"
+		if l.feed != nil && l.feed.Saved {
+			// In the order they were saved, the latest first; when each was published says little here.
+			f.ByArrival = true
+			l.empty = "Nothing saved yet. Paste an article's address above, or share a page to Readroom from your phone's browser."
+		}
 		if !l.scoped() {
 			l.title, l.tab, l.active = "All articles", "unread", "view:all"
 		}

@@ -741,6 +741,22 @@ func TestSavingAnArticle(t *testing.T) {
 		t.Fatalf("OPML export lists the saved articles as a feed: %s", body)
 	}
 
+	// Their page lists what was saved, read or not, the last saved first.
+	read := true
+	a.call("PATCH", fmt.Sprintf("/api/v1/entries/%d", metered.Entry.ID), map[string]any{"read": read}, nil)
+	req0, _ := http.NewRequest("GET", fmt.Sprintf("%s/?feed_id=%d", a.url, home.ID), nil)
+	req0.Header.Set("Authorization", "Bearer secret")
+	listed, err := http.DefaultClient.Do(req0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html, _ := io.ReadAll(listed.Body)
+	listed.Body.Close()
+	first, second := strings.Index(string(html), ">Metered<"), strings.Index(string(html), ">Hello<")
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("saved list: Metered at %d, Hello at %d; want both, the later save first", first, second)
+	}
+
 	// Sharing a page from another app lands on the saved list with its address ready to save.
 	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	req, _ := http.NewRequest("GET", a.url+"/save?title=Hello&text="+url.QueryEscape("Read this: https://example.com/a?b=1"), nil)

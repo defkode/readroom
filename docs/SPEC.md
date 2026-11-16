@@ -175,8 +175,9 @@ from an image to its entries. After a migration the database is vacuumed and ana
   1.5 times the text. The same applies to local copies of feed articles. A site that sends only
   the opening to visitors who are not signed in cannot be saved whole this way.
 - **In the app:** "Saved articles" sits under Starred in the feed list, and its page starts with a
-  field for an address; Manage feeds has the same field. After saving, the list is shown with the
-  new article at its top, highlighted.
+  field for an address; Manage feeds has the same field. The page opens on All, like a readlist, in
+  the order the articles were saved, so one already read is still where it was put. After saving,
+  the list is shown with the new article at its top, highlighted.
 - **From a phone:** the installed app registers as a share target (`share_target` in the manifest,
   Android only). Sharing a page from the browser opens `/save`, which finds the address in what was
   shared and hands it to the Saved articles page, whose form saves it through the API at once.
