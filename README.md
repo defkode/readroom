@@ -66,7 +66,8 @@ PCs), `readroom-linux-arm64` (Raspberry Pi and other ARM), `readroom-darwin-arm6
 `readroom-darwin-amd64` (Intel Mac). Running the same commands again updates it.
 
 To build it yourself instead: clone this repository and run `make install` (needs Docker, not Go),
-which puts `readroom` and the bundled text-to-speech script in `~/.local/bin`.
+which puts `readroom` and the bundled text-to-speech script in `~/.local/bin`, and restarts the worker
+if it is already running.
 
 **2. Have something to do the work.**
 

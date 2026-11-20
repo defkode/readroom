@@ -71,8 +71,8 @@ with their "AI summary" setting. See SPEC §4.
 
 `readroom worker` runs both client jobs — summaries (above) and listening (below) — on the owner's desktop:
 one systemd user service (`readroom-worker.service`, written by `readroom worker install`), set up in
-`~/.config/readroom/worker.toml`. After changing anything in `cmd/readroom`, reinstall the binary and
-restart it (`make install && systemctl --user restart readroom-worker`). `readroom worker check` tries every part; `journalctl --user -u readroom-worker`
+`~/.config/readroom/worker.toml`. After changing anything in `cmd/readroom`, run `make install`,
+which puts this checkout's binary in `~/.local/bin` and restarts the worker. `readroom worker check` tries every part; `journalctl --user -u readroom-worker`
 shows what it did. See SPEC §4.
 
 ## Listening

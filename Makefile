@@ -13,10 +13,14 @@ build: ## static binary at bin/readroom (runs on the host too)
 	@mkdir -p $(CACHE) bin
 	$(GO) go build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/readroom ./cmd/readroom
 
-install: build ## the binary and the bundled text-to-speech script into ~/.local/bin, for "readroom worker"
+install: build ## the binary of this checkout and the bundled text-to-speech script into ~/.local/bin; restarts the worker if it runs
 	install -D bin/readroom $(HOME)/.local/bin/readroom
 	install -D deploy/tts/tiny-voca-speak $(HOME)/.local/bin/tiny-voca-speak
-	@echo 'installed in ~/.local/bin; next: readroom worker init'
+	@if systemctl --user --quiet is-active readroom-worker.service 2>/dev/null; then \
+		systemctl --user restart readroom-worker.service && echo 'installed in ~/.local/bin; restarted the worker'; \
+	else \
+		echo 'installed in ~/.local/bin; to set up the worker: readroom worker init'; \
+	fi
 
 test:
 	@mkdir -p $(CACHE)
