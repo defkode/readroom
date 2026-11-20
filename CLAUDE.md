@@ -35,9 +35,10 @@ version, which model summarises — belong in their private runbook
 (`~/Documents/qnap-databox-runbook.md`, section "Readroom"), not in this repository. Update it there
 after a deployment.
 
-1. Push to `main` (when asked). Unless only documentation or `deploy/` changed,
+1. Push to `main` (when asked). Unless only documentation or the compose file changed,
    `.github/workflows/image.yml` runs the tests and publishes
-   `ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`; wait for the run to go green
+   `ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`, and then the bare binaries for worker
+   machines as the release tagged `rolling` (the README's download address points at it); wait for the run to go green
    (`gh run watch`).
 2. Container Station → Applications → `readroom` → recreate with `deploy/qnap-compose.yaml`, which
    pulls the new image. Replace `CHANGE_ME` with the real token in the editor — the owner pastes it;
@@ -66,10 +67,13 @@ The server never calls a model. `readroom summarize` (or any agent) reads
 `GET /api/v1/summaries/pending` and writes back with `PUT /api/v1/entries/{id}/summary`. New feeds have it on; each can turn it off
 with their "AI summary" setting. See SPEC §4.
 
-The owner runs it from a systemd user timer on their desktop (`readroom-summarize.timer`, units and
-setup in `deploy/systemd/`). After changing the summariser, reinstall the binary there
-(`install -D bin/readroom ~/.local/bin/readroom`). Check it with
-`systemctl --user status readroom-summarize` and `journalctl --user -u readroom-summarize`.
+## The worker
+
+`readroom worker` runs both client jobs — summaries (above) and listening (below) — on the owner's desktop:
+one systemd user service (`readroom-worker.service`, written by `readroom worker install`), set up in
+`~/.config/readroom/worker.toml`. After changing anything in `cmd/readroom`, reinstall the binary and
+restart it (`make install && systemctl --user restart readroom-worker`). `readroom worker check` tries every part; `journalctl --user -u readroom-worker`
+shows what it did. See SPEC §4.
 
 ## Listening
 
@@ -78,4 +82,4 @@ queues it; `readroom speak` (or any client) reads `GET /api/v1/audio/pending` an
 with `PUT /api/v1/entries/{id}/audio`. Keep that API ignorant of what makes the audio — the owner
 wants to be able to swap the text-to-speech engine. `readroom speak -cmd` runs any command from text
 on stdin to audio on stdout; `deploy/tts/tiny-voca-speak` (a uv script) is the one in use. Recordings
-are deleted after 30 days. See SPEC §4, units in `deploy/systemd/readroom-speak.*`.
+are deleted after 30 days. See SPEC §4.

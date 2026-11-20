@@ -4,7 +4,8 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 
 - Web app for phone, tablet and desktop (installable: "Add to Home Screen" / "Install app")
 - REST API for everything the UI does — summaries, read/starred, readlists, exports
-- Articles read aloud on request, by whatever text-to-speech you run yourself
+- AI summaries and articles read aloud, made by models you run yourself on another computer —
+  the server stays small enough for a NAS or a Raspberry Pi
 - Save any single article by its address — from a field in the app, or by sharing a page to the installed app on Android
 - Per-feed settings: name, category, and whether to keep full local copies of articles (and since when)
 - Preserved articles (text + images) live inside the database, so they survive the original going away
@@ -36,6 +37,101 @@ For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (
 `.github/workflows/image.yml`, and `deploy/qnap-compose.yaml` is the application definition that pulls
 it (Readroom behind its own Tailscale HTTPS node). `make image-qnap` still builds an arm64 archive
 that Container Station can import, for when the registry is out of reach.
+
+## The worker: summaries and listening
+
+The server can sit on something very small because the models run elsewhere: it only keeps two queues,
+articles waiting for a summary and articles asked to be read aloud. `readroom worker` is that elsewhere
+in one piece. Install it on a computer that has the models (a desktop, usually), and it keeps both
+queues empty whenever that computer is on. Either half is optional.
+
+**1. Download the binary** and put it somewhere on your `PATH`. It is the same single `readroom`
+file as the server, with nothing else to install; `~/.local/bin` is the usual place for a program of
+your own. On Linux or macOS, paste this into a terminal:
+
+```sh
+mkdir -p ~/.local/bin
+os=$(uname -s | tr A-Z a-z); arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+curl -fL -o ~/.local/bin/readroom \
+  "https://github.com/defkode/readroom/releases/latest/download/readroom-$os-$arch"
+chmod +x ~/.local/bin/readroom
+readroom version
+```
+
+If the last line says `command not found`, `~/.local/bin` is not on your `PATH`: add
+`export PATH="$HOME/.local/bin:$PATH"` to `~/.bashrc` or `~/.zshrc` and open a new terminal.
+The files can also be picked by hand from the
+[latest release](https://github.com/defkode/readroom/releases/latest): `readroom-linux-amd64` (most
+PCs), `readroom-linux-arm64` (Raspberry Pi and other ARM), `readroom-darwin-arm64` (Apple silicon),
+`readroom-darwin-amd64` (Intel Mac). Running the same commands again updates it.
+
+To build it yourself instead: clone this repository and run `make install` (needs Docker, not Go),
+which puts `readroom` and the bundled text-to-speech script in `~/.local/bin`.
+
+**2. Have something to do the work.**
+
+- For summaries: a model behind an OpenAI-compatible address — [Ollama](https://ollama.com),
+  llama.cpp's `llama-server`, LM Studio, a hosted service — or the `claude` CLI, or any command that
+  takes a prompt and prints an answer.
+- For listening: `ffmpeg`, and a text-to-speech command — see [Listening](#listening) for using your
+  own. The bundled one, `tiny-voca-speak` (English), needs only [uv](https://docs.astral.sh/uv/) and
+  downloads its model (27 MB) on first use. It is a second file to put beside the first:
+
+  ```sh
+  curl -fL -o ~/.local/bin/tiny-voca-speak \
+    https://github.com/defkode/readroom/releases/latest/download/tiny-voca-speak
+  chmod +x ~/.local/bin/tiny-voca-speak
+  ```
+
+**3. Write the configuration.** `readroom worker init` creates `~/.config/readroom/worker.toml` with
+every setting explained; edit it. The token is the server's `READROOM_TOKEN`.
+
+```toml
+server = "https://readroom.example.ts.net"
+token_file = "~/.config/readroom/token"   # or token = "…"
+
+[summaries]                               # remove a section to leave that work to someone else
+api = "http://127.0.0.1:11434/v1"         # any OpenAI-compatible server: Ollama, llama.cpp, LM Studio…
+model = "llama3.2"
+# backend = "claude"                      # or the claude CLI (model = "haiku"), tools switched off
+# command = "llm -m gpt-5-mini"           # or any command: prompt in, summary out
+# every = "5m"
+
+[speech]
+command = "tiny-voca-speak"               # any command: text in, audio out
+voice = "tiny-voca M2"
+# type = "audio/ogg"                      # upload as it is, without ffmpeg
+# every = "1m"
+```
+
+**4. Try it.** `readroom worker check` tries every part once and changes nothing on the server:
+
+```
+ok    server     https://readroom.example.ts.net answers and accepts the token
+ok    summaries  llama3.2 in 3.0s: The harbour board voted against replacing the lamp…
+ok    speech     9 kB of audio/mpeg in 0.4s
+```
+
+**5. Leave it running.** `readroom worker install` sets it up as a systemd user service that starts
+with your session. From then on:
+
+```sh
+systemctl --user status readroom-worker       # is it running
+journalctl --user -u readroom-worker -f       # what it did
+systemctl --user restart readroom-worker      # after changing worker.toml
+readroom worker uninstall                     # stop and remove it
+```
+
+Things to know:
+
+- `install` writes the service with the `PATH` of the shell it is run from, so the commands found
+  there are found by the service too. Run it again after moving the binary or changing your `PATH`.
+- It checks each queue as often as `every` says and works until the queue is empty. When something is
+  out of reach — the server, a model not started yet — it says so once and keeps trying.
+- Where there is no systemd (macOS, for one), start `readroom worker` by whatever runs programs in the
+  background there, or run `readroom worker -once` from a scheduler.
+- Run one worker per server: the queues have no locking, so two would do the same work twice.
+- To update: download the binary again (step 1), then `systemctl --user restart readroom-worker`.
 
 ## API
 
@@ -98,15 +194,18 @@ at a time.
 export READROOM_TOKEN=…
 readroom summarize -llm http://127.0.0.1:8080/v1 -model qwen3.6-fast   # any OpenAI-compatible server
 readroom summarize -backend claude                                     # claude CLI, Haiku, tools disabled
+readroom summarize -cmd "llm -m gpt-5-mini"                            # any command: prompt in, summary out
 ```
 
 It takes one article at a time — fetch, summarise, write back — until the queue is empty or `-limit`
 (default 20) is reached, so it never holds work locally and can be interrupted safely. With an empty
 queue it does not touch the model at all.
 
-To have the queue checked every 5 minutes on the machine that has the model, install the user units in `deploy/systemd/`
-(instructions at the top of the service file). The job needs a single environment variable,
-`READROOM_TOKEN`, read from `~/.config/readroom/env`; until that is filled in, runs are skipped.
+A `-cmd` command gets the instructions and the article on standard input and prints the summary. The
+article is untrusted text: use a command that can only write text, not one that can act on what it
+reads (`-backend claude` runs the claude CLI with its tools switched off for that reason).
+
+To have this done all the time, see [the worker](#the-worker-summaries-and-listening).
 
 ## Listening
 
@@ -155,18 +254,17 @@ dates and money sensibly and makes about 13 minutes of speech in 10 seconds on a
 with [uv](https://docs.astral.sh/uv/), which installs what it needs, and downloads the model (27 MB)
 on first use. English only.
 
-To have the queue checked every minute, install `deploy/systemd/readroom-speak.*` (instructions at the
-top of the service file); it uses the same `~/.config/readroom/env` as the summariser.
+To have this done all the time, see [the worker](#the-worker-summaries-and-listening).
 
 ## Layout
 
 ```
-cmd/readroom        entry point: serve, summarize, speak
+cmd/readroom        entry point: serve, worker, summarize, speak
 internal/store      SQLite schema and queries
 internal/fetch      feed polling, article preservation
 internal/export     EPUB and Markdown
 internal/server     REST API, web app (templates/, static/)
-deploy              NAS compose file, systemd units for the desktop jobs, a text-to-speech script
+deploy              NAS compose file, a text-to-speech script
 ```
 
 `make test` runs the suite (toolchain in Docker; Go is not needed on the host).

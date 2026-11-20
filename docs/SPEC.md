@@ -45,7 +45,7 @@ One static Go binary and one SQLite file.
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
 | UI | server-rendered `html/template` + small vanilla scripts (`app.js` drives a page, `player.js` the player and in-place page changes, `prefs.js`, `folds.js`, `transitions.js`) | no build step, no vendored framework; the script is a client of the same REST API |
 
-Packages: `cmd/readroom` (entry point: `serve`, `summarize`, `speak`), `internal/store` (schema, queries),
+Packages: `cmd/readroom` (entry point: `serve`, `worker`, `summarize`, `speak`), `internal/store` (schema, queries),
 `internal/fetch` (polling, preservation), `internal/export` (EPUB, Markdown), `internal/htmlx` (HTML
 helpers, excerpts), `internal/server` (API, web app, embedded templates and static files).
 
@@ -217,11 +217,12 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   article it could not summarise.
 - `readroom summarize` works through the queue one article at a time (fetch, summarise, write back),
   up to `-limit` per run, and does not contact the model when the queue is empty.
-- **Schedule:** a systemd user timer (`deploy/systemd/`) checks the queue every 5 minutes on the owner's desktop and runs it against
-  the local model. The job needs only `READROOM_TOKEN`, from `~/.config/readroom/env`.
+- **Schedule:** the worker (below) checks the queue every 5 minutes on the owner's desktop and runs it
+  against the local model.
 - `readroom summarize` is a reference client: any OpenAI-compatible server (tested with a local
-  `qwen3.6-fast` through llama-server) or the `claude` CLI with Haiku, tools disabled so text inside an
-  article cannot make it act.
+  `qwen3.6-fast` through llama-server); the `claude` CLI with Haiku, tools disabled so text inside an
+  article cannot make it act; or any command (`-cmd`) that reads the instructions and the article on
+  standard input and prints the summary.
 
 ### Listening
 
@@ -258,8 +259,28 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   with `-type`), and reports a failed command on the article. The title is read first.
 - `deploy/tts/tiny-voca-speak` is one such command, around the tiny-voca model: English, two voices,
   far faster than real time on a CPU. It splits paragraphs into sentences, the unit the model reads.
-- **Schedule:** a systemd user timer (`deploy/systemd/readroom-speak.*`) checks the queue every minute
-  on the owner's desktop.
+- **Schedule:** the worker (below) checks the queue every minute on the owner's desktop.
+
+### The worker
+
+- `readroom worker` is the client side in one piece: one process on a computer that has the models,
+  keeping both queues empty, set up by one file (`~/.config/readroom/worker.toml`: the server, its
+  token or a file holding it, a `[summaries]` section, a `[speech]` section). A section left out is
+  work left to someone else. It adds nothing to the API and does nothing `summarize` and `speak` do
+  not; those stay for single runs and scripts.
+- A model is reached in one of two general ways, so no engine needs code of its own: an
+  OpenAI-compatible address (Ollama, llama.cpp, LM Studio, hosted services) or a command from standard
+  input to standard output (summaries and speech alike). The `claude` backend is the one exception,
+  kept because it switches the CLI's tools off.
+- Each queue has its own loop: work until it is empty, wait `every` (5 minutes for summaries, 1 for
+  speech, where somebody is waiting), again. A failure — server out of reach, model not started — is
+  logged once, retried at the same pace, and its end is logged too.
+- `worker init` writes a commented file; `worker check` tries the server and token, one sample summary
+  and one sample sentence of speech, and writes nothing to the server; `worker install` writes and
+  starts a systemd user service (with the installing shell's `PATH`, which a user service otherwise
+  lacks) and stops the two timers that did this work before; `worker uninstall` removes it.
+- An unknown setting in the file is an error, not ignored: a mistyped name would otherwise silently
+  do nothing.
 
 ### Reading, organising, searching
 
@@ -395,7 +416,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | AI summaries are set per feed, on for a new one, with a length threshold | the owner wants a summary nearly everywhere, so turning it off is the exception; short notes and comics are skipped by length |
 | A dedicated queue endpoint that returns ready plain text | a script or agent needs one request and no HTML parsing |
 | Summariser pulls one article at a time, checking every 5 minutes, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the NAS is too small to run a model |
-| The scheduled job needs only `READROOM_TOKEN` | one secret in one file; everything else is fixed in the unit |
+| One `readroom worker` with one file replaces the per-queue timers, flags and environment file | the loose units worked, but setting them up meant copying four files and editing commands inside them; anyone else running Readroom needs one thing to configure, one to check and one to install |
+| Every push to `main` publishes the binary for Linux and macOS as one release that moves forward (`rolling`) | somebody setting up a worker needs a file to download, not a toolchain; there are no version numbers here to cut releases by, and one address that always holds the newest build keeps the instructions to a single command |
+| The worker is a command of the same binary, not a separate program | one thing to build, release and keep in step with the API; the size is no burden on a desktop |
+| Models are reached by an OpenAI-compatible address or by a command, not by a plugin per engine | those two cover nearly everything people run, and a new engine needs no change here |
+| `worker check` exists and writes nothing | a first set-up fails in one of four places (server, token, model, voice); finding which should not take reading a journal |
 | One summariser at a time, no leasing | simplest thing that works for one person; add leasing if several workers are ever needed |
 | Excerpt from the feed's teaser, else the first real paragraph, else the image caption | every article shows something useful without waiting for a model |
 | Bulk "mark as read" is a labelled menu item with Undo, not a bare icon with a confirmation | a lone check mark did not say it meant everything; confirmations get clicked through, undo actually recovers a slip |
@@ -450,7 +475,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - **Local network without internet:** the NAS installation is reachable only through its Tailscale
   address, and whether that keeps working during an internet outage has not been tested. Publishing
   port 8090 on the NAS as well would settle it.
-- Summaries are produced only while the owner's desktop is on: the scheduled job and the model run there,
+- Summaries are produced only while the owner's desktop is on: the worker and the model run there,
   not on the NAS.
 - Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
   waits (up to 30 days).

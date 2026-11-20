@@ -6,6 +6,10 @@
 #   run by hand   ->  :sha-<commit>  (plus :latest when run on main)
 #
 # deploy/qnap-compose.yaml points at :latest; a :sha-… or version tag is there to go back to.
+#
+# A push to main also publishes the same binary by itself, for the computers that run
+# "readroom worker": the release tagged "rolling" always holds the newest build, at
+# https://github.com/<owner>/readroom/releases/latest/download/readroom-<os>-<arch>
 name: Image
 
 on:
@@ -13,7 +17,7 @@ on:
     branches: [main]
     tags: ['v*']
     # A push that only touches documentation or the deployment notes changes nothing in the image.
-    paths-ignore: ['**.md', 'docs/**', 'deploy/**']
+    paths-ignore: ['**.md', 'docs/**', 'deploy/qnap-compose.yaml']
   workflow_dispatch:
 
 permissions:
@@ -50,7 +54,7 @@ jobs:
         run: |
           for arch in arm64 amd64; do
             CGO_ENABLED=0 GOOS=linux GOARCH=$arch \
-              go build -trimpath -ldflags="-s -w" -o "prebuilt/out/$arch/readroom" ./cmd/readroom
+              go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_SHA::7}" -o "prebuilt/out/$arch/readroom" ./cmd/readroom
           done
           mkdir -p prebuilt/out/data
 
@@ -85,3 +89,45 @@ jobs:
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+  # The binary alone, for whoever runs the worker on a desktop: nobody should have
+  # to clone and build to get it. One release, moved forward with every build, so
+  # the address to download from never changes.
+  binaries:
+    needs: image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/image.yml
+
+      - name: Build the binaries
+        run: |
+          mkdir dist
+          for target in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} \
+              go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_SHA::7}" \
+              -o "dist/readroom-${target%/*}-${target#*/}" ./cmd/readroom
+          done
+          cp deploy/tts/tiny-voca-speak dist/
+          cd dist && sha256sum * > SHA256SUMS
+
+      - name: Publish them as the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f rolling
+          git push -f origin rolling
+          notes="The newest build of main (${GITHUB_SHA::7}), replaced with every push. Installation: see the README."
+          gh release view rolling >/dev/null 2>&1 ||
+            gh release create rolling --title "Latest build" --notes "$notes" --latest
+          gh release upload rolling dist/* --clobber
+          gh release edit rolling --notes "$notes" --latest

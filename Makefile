@@ -5,11 +5,18 @@ GO       := docker run --rm --user $(shell id -u):$(shell id -g) \
             -e HOME=/cache -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod -e CGO_ENABLED=0 \
             -v $(CACHE):/cache -v $(CURDIR):/src -w /src $(GO_IMAGE)
 
-.PHONY: build test vet tidy run image image-multiarch image-qnap
+VERSION  := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+
+.PHONY: build install test vet tidy run image image-multiarch image-qnap
 
 build: ## static binary at bin/readroom (runs on the host too)
 	@mkdir -p $(CACHE) bin
-	$(GO) go build -trimpath -o bin/readroom ./cmd/readroom
+	$(GO) go build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/readroom ./cmd/readroom
+
+install: build ## the binary and the bundled text-to-speech script into ~/.local/bin, for "readroom worker"
+	install -D bin/readroom $(HOME)/.local/bin/readroom
+	install -D deploy/tts/tiny-voca-speak $(HOME)/.local/bin/tiny-voca-speak
+	@echo 'installed in ~/.local/bin; next: readroom worker init'
 
 test:
 	@mkdir -p $(CACHE)

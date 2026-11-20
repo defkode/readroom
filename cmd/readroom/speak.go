@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,15 @@ import (
 	"time"
 )
 
+// speechOpts says what makes the recordings and how much of the queue one run takes.
+type speechOpts struct {
+	Command string // run by the shell: text on standard input, audio on standard output
+	Voice   string // name shown with the recording
+	Type    string // content type of what the command writes; empty = encode to MP3 with ffmpeg
+	Bitrate string
+	Limit   int // stop after this many articles (0 = until the queue is empty)
+}
+
 // speak is a plain client of the REST API: it takes the server's queue of
 // articles the owner asked to hear, has a command turn each into speech, and
 // uploads the recording. It knows nothing about the voice: the command is any
@@ -24,25 +34,42 @@ func speak(args []string) error {
 	fs := flag.NewFlagSet("speak", flag.ExitOnError)
 	apiURL := fs.String("api", env("READROOM_URL", "http://127.0.0.1:8090"), "readroom base URL")
 	token := fs.String("token", os.Getenv("READROOM_TOKEN"), "readroom access token")
-	command := fs.String("cmd", os.Getenv("READROOM_TTS"), "text-to-speech command, run by the shell: reads the text on standard input, writes audio to standard output")
-	voice := fs.String("voice", "", "name shown with the recording, such as the model and its voice")
-	ctype := fs.String("type", "", `content type of what the command writes, uploaded as it is (e.g. "audio/ogg"); by default the output is taken to be anything ffmpeg reads, such as WAV, and encoded to MP3`)
-	bitrate := fs.String("bitrate", "48k", "MP3 bitrate (ignored with -type)")
-	limit := fs.Int("limit", 10, "stop after this many articles in one run (0 = until the queue is empty)")
+	var o speechOpts
+	fs.StringVar(&o.Command, "cmd", os.Getenv("READROOM_TTS"), "text-to-speech command, run by the shell: reads the text on standard input, writes audio to standard output")
+	fs.StringVar(&o.Voice, "voice", "", "name shown with the recording, such as the model and its voice")
+	fs.StringVar(&o.Type, "type", "", `content type of what the command writes, uploaded as it is (e.g. "audio/ogg"); by default the output is taken to be anything ffmpeg reads, such as WAV, and encoded to MP3`)
+	fs.StringVar(&o.Bitrate, "bitrate", "48k", "MP3 bitrate (ignored with -type)")
+	fs.IntVar(&o.Limit, "limit", 10, "stop after this many articles in one run (0 = until the queue is empty)")
 	fs.Parse(args)
-	if strings.TrimSpace(*command) == "" {
-		return errors.New(`no text-to-speech command: pass -cmd (or set READROOM_TTS), e.g. -cmd deploy/tts/tiny-voca-speak`)
-	}
 
-	c := &client{base: strings.TrimRight(*apiURL, "/"), token: *token, http: &http.Client{Timeout: 10 * time.Minute}}
-	work, err := os.MkdirTemp("", "readroom-speak")
+	done, failed, err := runSpeech(context.Background(), newClient(*apiURL, *token), o, printf)
 	if err != nil {
 		return err
 	}
+	if done == 0 && failed == 0 {
+		fmt.Println("nothing to read aloud")
+	} else {
+		fmt.Printf("%d recorded, %d failed\n", done, failed)
+	}
+	return nil
+}
+
+// runSpeech records the queued articles one at a time, as with summaries: the
+// server says what is wanted and hands over text ready to be read; nothing is
+// held here between runs.
+func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, ...any)) (done, failed int, err error) {
+	if strings.TrimSpace(o.Command) == "" {
+		return 0, 0, errors.New(`no text-to-speech command, e.g. deploy/tts/tiny-voca-speak`)
+	}
+	if o.Bitrate == "" {
+		o.Bitrate = "48k"
+	}
+	work, err := os.MkdirTemp("", "readroom-speak")
+	if err != nil {
+		return 0, 0, err
+	}
 	defer os.RemoveAll(work)
 
-	// One article at a time, as with summaries: the server says what is wanted and
-	// hands over text ready to be read; nothing is held here between runs.
 	type item struct {
 		ID    int64  `json:"id"`
 		Title string `json:"title"`
@@ -56,7 +83,7 @@ func speak(args []string) error {
 		var queue struct {
 			Entries []item `json:"entries"`
 		}
-		if err := c.do("GET", path, nil, &queue); err != nil {
+		if err := c.do(ctx, "GET", path, nil, &queue); err != nil {
 			return nil, err
 		}
 		if len(queue.Entries) == 0 {
@@ -65,14 +92,13 @@ func speak(args []string) error {
 		return &queue.Entries[0], nil
 	}
 
-	var failed []string
-	done := 0
-	for *limit <= 0 || done+len(failed) < *limit {
-		e, err := next(failed)
+	var skip []string
+	for o.Limit <= 0 || done+len(skip) < o.Limit {
+		e, err := next(skip)
 		if err != nil {
-			return err
+			return done, len(skip), err
 		}
-		if e == nil || slices.Contains(failed, fmt.Sprint(e.ID)) {
+		if e == nil || slices.Contains(skip, fmt.Sprint(e.ID)) {
 			break
 		}
 		start := time.Now()
@@ -84,39 +110,37 @@ func speak(args []string) error {
 			}
 			text = title + "\n" + text
 		}
-		audio, kind, err := synthesize(work, *command, *ctype, *bitrate, text)
+		audio, kind, err := synthesize(ctx, work, o.Command, o.Type, o.Bitrate, text)
+		if ctx.Err() != nil {
+			return done, len(skip), ctx.Err() // stopped, not failed: the article stays queued
+		}
 		if err != nil {
 			// Say so on the article, where the owner is waiting, and go on to the next.
-			failed = append(failed, fmt.Sprint(e.ID))
-			fmt.Printf("fail  #%d %s: %v\n", e.ID, e.Title, err)
-			if err := c.do("POST", fmt.Sprintf("/api/v1/entries/%d/audio/error", e.ID), map[string]string{"error": err.Error()}, nil); err != nil {
-				return err
+			skip = append(skip, fmt.Sprint(e.ID))
+			logf("fail  #%d %s: %v", e.ID, e.Title, err)
+			if err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/entries/%d/audio/error", e.ID), map[string]string{"error": err.Error()}, nil); err != nil {
+				return done, len(skip), err
 			}
 			continue
 		}
-		if err := c.upload(fmt.Sprintf("/api/v1/entries/%d/audio?voice=%s", e.ID, url.QueryEscape(*voice)), kind, audio); err != nil {
-			return err
+		if err := c.upload(ctx, fmt.Sprintf("/api/v1/entries/%d/audio?voice=%s", e.ID, url.QueryEscape(o.Voice)), kind, audio); err != nil {
+			return done, len(skip), err
 		}
 		done++
-		fmt.Printf("done  #%d %s (%.1f MB, %.1fs)\n", e.ID, e.Title, float64(len(audio))/(1<<20), time.Since(start).Seconds())
+		logf("done  #%d %s (%.1f MB, %.1fs)", e.ID, e.Title, float64(len(audio))/(1<<20), time.Since(start).Seconds())
 	}
-	if done == 0 && len(failed) == 0 {
-		fmt.Println("nothing to read aloud")
-	} else {
-		fmt.Printf("%d recorded, %d failed\n", done, len(failed))
-	}
-	return nil
+	return done, len(skip), nil
 }
 
 // synthesize runs the text-to-speech command on text and returns the audio to
 // upload with its content type.
-func synthesize(work, command, ctype, bitrate, text string) ([]byte, string, error) {
+func synthesize(ctx context.Context, work, command, ctype, bitrate, text string) ([]byte, string, error) {
 	raw := filepath.Join(work, "speech")
 	out, err := os.Create(raw)
 	if err != nil {
 		return nil, "", err
 	}
-	cmd := exec.Command("sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Stdin = strings.NewReader(text)
 	cmd.Stdout = out
 	var stderr bytes.Buffer
@@ -132,7 +156,7 @@ func synthesize(work, command, ctype, bitrate, text string) ([]byte, string, err
 	if ctype == "" {
 		// MP3 plays in every browser and seeks without an index.
 		mp3 := filepath.Join(work, "speech.mp3")
-		enc := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", raw,
+		enc := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", raw,
 			"-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", bitrate, mp3)
 		if msg, err := enc.CombinedOutput(); err != nil {
 			return nil, "", fmt.Errorf("ffmpeg: %w: %s", err, lastLine(string(msg)))
@@ -149,8 +173,8 @@ func lastLine(s string) string {
 }
 
 // upload sends a file as the body of a PUT.
-func (c *client) upload(path, ctype string, data []byte) error {
-	req, err := http.NewRequest("PUT", c.base+path, bytes.NewReader(data))
+func (c *client) upload(ctx context.Context, path, ctype string, data []byte) error {
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.base+path, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

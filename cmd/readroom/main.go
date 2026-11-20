@@ -22,6 +22,9 @@ import (
 	"readroom/internal/store"
 )
 
+// version is the commit the binary was built from, set by the build.
+var version = "dev"
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -42,8 +45,12 @@ func main() {
 		err = summarize(os.Args[2:])
 	case "speak":
 		err = speak(os.Args[2:])
+	case "worker":
+		err = worker(os.Args[2:])
+	case "version", "-version", "--version":
+		fmt.Println("readroom", version)
 	default:
-		fmt.Fprintln(os.Stderr, `usage: readroom [serve|summarize|speak]
+		fmt.Fprintln(os.Stderr, `usage: readroom [serve|worker|summarize|speak|version]
 
   serve       run the reader (default). Configured through the environment:
                 READROOM_ADDR      listen address            (default :8090)
@@ -54,6 +61,9 @@ func main() {
                 READROOM_INTERVAL  how often feeds are polled (default 30m)
                 READROOM_LOG       info or debug             (default info)
                 READROOM_SUMMARY_MIN_CHARS  shortest article queued for an AI summary (default 1500)
+  worker      write the summaries and record the articles asked to be read aloud, on
+              a computer that has the models, from one configuration file; see
+              "readroom worker -h"
   summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"
   speak       record the articles asked to be read aloud with a text-to-speech
               command; see "readroom speak -h"`)
