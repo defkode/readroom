@@ -278,6 +278,10 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   quotation, code listing, image with its caption, table, rule — each reduced to the inline marks worth
   keeping: link, bold, italic, inline code, image, sub- and superscript, strikethrough. Every other
   element gives way to its contents; an empty link or emphasis disappears.
+- A table is a block of its own only when it is a table of data: no table inside it, and at least two
+  rows of the same two or more cells. Any other table is one that lays the page out, as newsletters
+  written for e-mail are built, and is cut into the blocks its cells hold. (Before this, a whole
+  newsletter issue was two blocks, and clean-up could only keep or drop all of it.)
 - A client gives each block a **role**: `keep`, `drop`, or for text `h2`, `h3`, `text`, `quote`. The
   server assembles the kept blocks, converts the result to **Markdown**, and stores that as the clean
   copy beside the original, which is never changed. What is shown is the HTML that Markdown renders

@@ -177,3 +177,24 @@ keep(lamp)</code></pre>
 		t.Error("accepted an unknown role")
 	}
 }
+
+// A newsletter written for e-mail is laid out with tables; its text is cut into
+// blocks all the same, and only a real table of data stays a table.
+func TestBlocksInLayoutTables(t *testing.T) {
+	const issue = `<table><tbody><tr><td><div>
+<table><tbody><tr><td align="left"><p>#827 — November 19</p></td><td align="right"><p><a href="/web">Read on the Web</a></p></td></tr></tbody></table>
+<table><tbody><tr><td></td></tr></tbody></table>
+<table><tbody><tr><td><a href="/story"><img src="/lead.jpg" width="640"></a></td></tr></tbody></table>
+<table><tbody><tr><td><p><a href="/story">A story</a> — what it is about.</p><p>Its Author</p></td></tr></tbody></table>
+<table><tbody><tr><th>Version</th><th>Released</th></tr><tr><td>4.0</td><td>2026</td></tr></tbody></table>
+</div></td></tr></tbody></table>`
+	var got []string
+	for _, b := range Blocks(issue) {
+		got = append(got, b.Label()+":"+b.Text())
+	}
+	want := []string{"text:#827 — November 19", "text:Read on the Web", "image:", "text:A story — what it is about.",
+		"text:Its Author", "table:Version Released 4.0 2026"}
+	if strings.Join(got, " | ") != strings.Join(want, " | ") {
+		t.Errorf("blocks:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

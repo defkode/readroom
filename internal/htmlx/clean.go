@@ -81,6 +81,9 @@ func (b Block) Text() string {
 			}
 		})
 		return strings.TrimSpace(alt + " " + Flat(b.Caption))
+	case BlockTable:
+		// Cells would otherwise run together.
+		return Flat(strings.NewReplacer("</td>", " </td>", "</th>", " </th>").Replace(b.HTML))
 	}
 	return Flat(b.HTML)
 }
@@ -252,6 +255,10 @@ func (c *blockCutter) walk(parent *html.Node) {
 		case "hr":
 			c.out = append(c.out, Block{Kind: BlockRule})
 		case "table":
+			if !dataTable(n) {
+				c.walk(n) // a table used to lay the page out: what counts is in its cells
+				continue
+			}
 			if Flat(Render([]*html.Node{n})) != "" {
 				c.out = append(c.out, Block{Kind: BlockTable, HTML: Sanitize(Render([]*html.Node{n}))})
 			}
@@ -288,6 +295,48 @@ func (c *blockCutter) walk(parent *html.Node) {
 		}
 	}
 	flush()
+}
+
+// dataTable tells a table of data from one that only arranges the page, as
+// newsletters written for e-mail are built: tables within tables, most of one
+// cell. A table of data has no table inside it and at least two rows, each of
+// the same two or more cells.
+func dataTable(table *html.Node) bool {
+	var rows []int
+	nested := false
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type != html.ElementNode {
+				continue
+			}
+			switch c.Data {
+			case "table":
+				nested = true
+			case "tr":
+				cells := 0
+				for d := c.FirstChild; d != nil; d = d.NextSibling {
+					if d.Type == html.ElementNode && (d.Data == "td" || d.Data == "th") {
+						cells++
+						walk(d) // only to find a table inside
+					}
+				}
+				rows = append(rows, cells)
+			default:
+				walk(c)
+			}
+		}
+	}
+	walk(table)
+	if nested || len(rows) < 2 || rows[0] < 2 {
+		return false
+	}
+	for _, cells := range rows {
+		if cells != rows[0] {
+			return false
+		}
+	}
+	return true
 }
 
 // text1 is the text under n, exactly as written.
