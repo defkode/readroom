@@ -216,6 +216,12 @@ ALTER TABLE entry_bodies ADD COLUMN clean_html TEXT;
 -- The queue is read often and is nearly always a handful of rows.
 CREATE INDEX entries_uncleaned ON entries (feed_id) WHERE cleaned_at IS NULL AND cleanup_error = '';
 `,
+	`
+-- Which text a spoken version is of: the language of the translation it was asked for
+-- while the article had one, else empty for the article as it is. It sits after the
+-- recording, so it is only ever read for requests still waiting, which have none.
+ALTER TABLE entry_audio ADD COLUMN language TEXT NOT NULL DEFAULT '';
+`,
 }
 
 func Open(path string) (*Store, error) {

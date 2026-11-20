@@ -128,6 +128,24 @@ func TestTranslation(t *testing.T) {
 		t.Errorf("after a local copy was kept: translation %q", kept.Translation)
 	}
 
+	// Asked to be read aloud now, the article is read in its translation, and the
+	// queue says which language that is so a client can pick a voice for it.
+	a.call("POST", "/api/v1/entries/1/audio", nil, nil)
+	var speech struct {
+		Entries []struct {
+			ID       int64  `json:"id"`
+			Title    string `json:"title"`
+			Language string `json:"language"`
+			Text     string `json:"text"`
+		} `json:"entries"`
+	}
+	a.call("GET", "/api/v1/audio/pending", nil, &speech)
+	if len(speech.Entries) != 1 || speech.Entries[0].Language != "pl" || speech.Entries[0].Title != "Witaj serdecznie" ||
+		speech.Entries[0].Text != "Krótki fragment." {
+		t.Errorf("speech queue for a translated article: %+v", speech.Entries)
+	}
+	a.call("DELETE", "/api/v1/entries/1/audio", nil, nil)
+
 	// Asking again leaves a finished translation alone; removing it brings the offer back.
 	if resp := a.call("POST", "/api/v1/entries/1/translation", nil, &e); resp.StatusCode != http.StatusOK || e.Translation != store.TranslationReady {
 		t.Errorf("asked again for a finished translation: status %d, %q", resp.StatusCode, e.Translation)

@@ -279,6 +279,25 @@ dates and money sensibly and makes about 13 minutes of speech in 10 seconds on a
 with [uv](https://docs.astral.sh/uv/), which installs what it needs, and downloads the model (27 MB)
 on first use. English only.
 
+**A voice per language.** An article that has a [translation](#translation) is read in it, and each
+item of the queue says what `language` its text is in (when known). In the worker's configuration a
+language can have a voice of its own, and its command is told the language in
+`READROOM_SPEECH_LANGUAGE`:
+
+```toml
+[speech]
+command = "tiny-voca-speak"        # everything else
+voice = "tiny-voca M2"
+
+[speech.for.pl]
+command = "my-polish-voice"        # any command of your own: text in, audio out
+voice = "Polish voice"
+```
+
+The command is yours: Readroom knows only that it takes text and gives audio, so it can be a script
+around a paid service for a language no free model reads well. `readroom worker check` checks only
+that such a command is installed: it does not make it speak, which might cost money.
+
 To have this done all the time, see [the worker](#the-worker-clean-up-summaries-listening-and-translation).
 
 ## AI clean-up

@@ -17,13 +17,34 @@ import (
 	"time"
 )
 
-// speechOpts says what makes the recordings and how much of the queue one run takes.
-type speechOpts struct {
+// speechVoice is one way of turning text into a recording.
+type speechVoice struct {
 	Command string // run by the shell: text on standard input, audio on standard output
 	Voice   string // name shown with the recording
 	Type    string // content type of what the command writes; empty = encode to MP3 with ffmpeg
 	Bitrate string
-	Limit   int // stop after this many articles (0 = until the queue is empty)
+}
+
+// speechOpts says what makes the recordings and how much of the queue one run takes.
+type speechOpts struct {
+	speechVoice
+	// For holds the voices for particular languages, by code ("pl"): a text in one
+	// of them is read by its voice instead. Texts in any other language, or of
+	// unknown language, are read by the voice above.
+	For   map[string]speechVoice
+	Limit int // stop after this many articles (0 = until the queue is empty)
+}
+
+// voiceFor picks the voice for a text in language.
+func (o speechOpts) voiceFor(language string) speechVoice {
+	v, ok := o.For[language]
+	if !ok {
+		v = o.speechVoice
+	}
+	if v.Bitrate == "" {
+		v.Bitrate = "48k"
+	}
+	return v
 }
 
 // speak is a plain client of the REST API: it takes the server's queue of
@@ -61,9 +82,6 @@ func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, .
 	if strings.TrimSpace(o.Command) == "" {
 		return 0, 0, errors.New(`no text-to-speech command, e.g. deploy/tts/tiny-voca-speak`)
 	}
-	if o.Bitrate == "" {
-		o.Bitrate = "48k"
-	}
 	work, err := os.MkdirTemp("", "readroom-speak")
 	if err != nil {
 		return 0, 0, err
@@ -71,9 +89,10 @@ func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, .
 	defer os.RemoveAll(work)
 
 	type item struct {
-		ID    int64  `json:"id"`
-		Title string `json:"title"`
-		Text  string `json:"text"`
+		ID       int64  `json:"id"`
+		Title    string `json:"title"`
+		Language string `json:"language"`
+		Text     string `json:"text"`
 	}
 	next := func(skip []string) (*item, error) {
 		path := "/api/v1/audio/pending?limit=1"
@@ -110,7 +129,8 @@ func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, .
 			}
 			text = title + "\n" + text
 		}
-		audio, kind, err := synthesize(ctx, work, o.Command, o.Type, o.Bitrate, text)
+		voice := o.voiceFor(e.Language)
+		audio, kind, err := synthesize(ctx, work, voice, e.Language, text)
 		if ctx.Err() != nil {
 			return done, len(skip), ctx.Err() // stopped, not failed: the article stays queued
 		}
@@ -123,7 +143,7 @@ func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, .
 			}
 			continue
 		}
-		if err := c.upload(ctx, fmt.Sprintf("/api/v1/entries/%d/audio?voice=%s", e.ID, url.QueryEscape(o.Voice)), kind, audio); err != nil {
+		if err := c.upload(ctx, fmt.Sprintf("/api/v1/entries/%d/audio?voice=%s", e.ID, url.QueryEscape(voice.Voice)), kind, audio); err != nil {
 			return done, len(skip), err
 		}
 		done++
@@ -132,9 +152,11 @@ func runSpeech(ctx context.Context, c *client, o speechOpts, logf func(string, .
 	return done, len(skip), nil
 }
 
-// synthesize runs the text-to-speech command on text and returns the audio to
-// upload with its content type.
-func synthesize(ctx context.Context, work, command, ctype, bitrate, text string) ([]byte, string, error) {
+// synthesize runs a voice's text-to-speech command on text and returns the audio
+// to upload with its content type. The command is told the text's language, when
+// that is known, in READROOM_SPEECH_LANGUAGE, so one command can serve several.
+func synthesize(ctx context.Context, work string, voice speechVoice, language, text string) ([]byte, string, error) {
+	command, ctype, bitrate := voice.Command, voice.Type, voice.Bitrate
 	raw := filepath.Join(work, "speech")
 	out, err := os.Create(raw)
 	if err != nil {
@@ -142,6 +164,7 @@ func synthesize(ctx context.Context, work, command, ctype, bitrate, text string)
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Stdin = strings.NewReader(text)
+	cmd.Env = append(os.Environ(), "READROOM_SPEECH_LANGUAGE="+language)
 	cmd.Stdout = out
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

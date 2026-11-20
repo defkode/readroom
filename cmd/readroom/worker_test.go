@@ -292,3 +292,37 @@ func TestJudge(t *testing.T) {
 		t.Errorf("dropping the article itself was accepted: %s", why)
 	}
 }
+
+// A text in a language that has a voice of its own is read by it, and the
+// command is told the language; everything else is read by the usual voice.
+func TestSpeechVoicePerLanguage(t *testing.T) {
+	plan, err := loadWorkerConfig(writeConfig(t, `
+server = "http://reader"
+[speech]
+command = "usual"
+voice = "Usual"
+[speech.for.PL]
+command = "polish"
+voice = "Polish"
+type = "audio/mpeg"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := plan.speech.voiceFor("pl"); v.Command != "polish" || v.Voice != "Polish" || v.Type != "audio/mpeg" {
+		t.Errorf("voice for pl: %+v", v)
+	}
+	for _, language := range []string{"", "en", "de"} {
+		if v := plan.speech.voiceFor(language); v.Command != "usual" || v.Bitrate != "48k" {
+			t.Errorf("voice for %q: %+v", language, v)
+		}
+	}
+	if _, err := loadWorkerConfig(writeConfig(t, "server = \"x\"\n[speech]\ncommand = \"c\"\n[speech.for.pl]\nvoice = \"v\"\n")); err == nil {
+		t.Error("a voice without a command was accepted")
+	}
+	audio, kind, err := synthesize(context.Background(), t.TempDir(),
+		speechVoice{Command: `printf "%s:" "$READROOM_SPEECH_LANGUAGE"; cat`, Type: "audio/wav"}, "pl", "tekst")
+	if err != nil || kind != "audio/wav" || string(audio) != "pl:tekst" {
+		t.Errorf("synthesize: %q %s %v", audio, kind, err)
+	}
+}

@@ -101,5 +101,10 @@ Same shape as summaries: the server never runs a speech model. The headphones bu
 queues it; `readroom speak` (or any client) reads `GET /api/v1/audio/pending` and uploads a recording
 with `PUT /api/v1/entries/{id}/audio`. Keep that API ignorant of what makes the audio — the owner
 wants to be able to swap the text-to-speech engine. `readroom speak -cmd` runs any command from text
-on stdin to audio on stdout; `deploy/tts/tiny-voca-speak` (a uv script) is the one in use. Recordings
+on stdin to audio on stdout; `deploy/tts/tiny-voca-speak` (a uv script) is the one in use for English.
+An article with a translation is read in it; the queue names the text's language and the worker's
+`[speech.for.<code>]` sections pick a command for it. Such a command is the owner's own script, kept
+outside this repository, and Readroom must know nothing about what is behind it — no engine, service
+or language runtime named here. The owner's Polish voice is a paid service: do not make it speak
+without their say. Recordings
 are deleted after 30 days. See SPEC §4.

@@ -84,6 +84,12 @@ voice = "tiny-voca M2"            # the name shown with the recording
 # type = "audio/ogg"              # upload the command's output as it is, without ffmpeg
 # bitrate = "48k"
 # every = "1m"
+
+# Another voice for texts in one language — an article's translation, say. The
+# command is told the language in READROOM_SPEECH_LANGUAGE.
+# [speech.for.pl]
+# command = "my-polish-voice"
+# voice = "Polish voice"
 `
 
 type workerConfig struct {
@@ -124,6 +130,12 @@ type workerConfig struct {
 		Type    string `toml:"type"`
 		Bitrate string `toml:"bitrate"`
 		Every   string `toml:"every"`
+		For     map[string]struct {
+			Command string `toml:"command"`
+			Voice   string `toml:"voice"`
+			Type    string `toml:"type"`
+			Bitrate string `toml:"bitrate"`
+		} `toml:"for"`
 	} `toml:"speech"`
 }
 
@@ -233,7 +245,14 @@ func loadWorkerConfig(path string) (*workerPlan, error) {
 		if strings.TrimSpace(s.Command) == "" {
 			return nil, errors.New("[speech]: command is not set")
 		}
-		p.speech = &speechOpts{Command: s.Command, Voice: s.Voice, Type: s.Type, Bitrate: s.Bitrate}
+		p.speech = &speechOpts{speechVoice: speechVoice{Command: s.Command, Voice: s.Voice, Type: s.Type, Bitrate: s.Bitrate},
+			For: map[string]speechVoice{}}
+		for language, v := range s.For {
+			if strings.TrimSpace(v.Command) == "" {
+				return nil, fmt.Errorf("[speech.for.%s]: command is not set", language)
+			}
+			p.speech.For[strings.ToLower(language)] = speechVoice{Command: v.Command, Voice: v.Voice, Type: v.Type, Bitrate: v.Bitrate}
+		}
 		if p.speechWait, err = parseEvery(s.Every, time.Minute); err != nil {
 			return nil, fmt.Errorf("[speech]: %w", err)
 		}
@@ -493,13 +512,15 @@ func workerCheck(plan *workerPlan) error {
 		kind := ""
 		start := time.Now()
 		if err == nil {
-			bitrate := o.Bitrate
-			if bitrate == "" {
-				bitrate = "48k"
-			}
-			audio, kind, err = synthesize(ctx, work, o.Command, o.Type, bitrate, "The lighthouse keeps its lamp.")
+			audio, kind, err = synthesize(ctx, work, o.voiceFor(""), "", "The lighthouse keeps its lamp.")
 		}
 		report("speech", err, fmt.Sprintf("%d kB of %s in %.1fs", len(audio)/1000, kind, time.Since(start).Seconds()))
+		// A voice for one language may be one that is paid for by the word, so it is
+		// not made to speak here: only whether its command is there to run.
+		for language, v := range o.For {
+			_, err := exec.LookPath(strings.Fields(v.Command)[0])
+			report("speech "+language, err, fmt.Sprintf("%s is installed (not tried: it may cost money to)", strings.Fields(v.Command)[0]))
+		}
 	} else {
 		fmt.Printf("--    %-12s not configured\n", "speech")
 	}

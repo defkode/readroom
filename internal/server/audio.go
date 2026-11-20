@@ -31,7 +31,8 @@ type pendingAudio struct {
 	Author      string `json:"author"`
 	URL         string `json:"url"`
 	PublishedAt string `json:"published_at"`
-	Text        string `json:"text"` // what to read: plain text, one paragraph per line, at most max_chars characters
+	Language    string `json:"language"` // the language of the text ("pl"), when it is known; else empty
+	Text        string `json:"text"`     // what to read: plain text, one paragraph per line, at most max_chars characters
 	Truncated   bool   `json:"truncated"`
 }
 
@@ -58,9 +59,18 @@ func (s *Server) apiPendingAudio(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]pendingAudio, 0, len(entries))
 	for _, e := range entries {
-		text := []rune(htmlx.Speech(e.Body()))
-		item := pendingAudio{ID: e.ID, FeedID: e.FeedID, FeedTitle: e.FeedTitle, Title: e.Title, Author: e.Author,
-			URL: e.URL, PublishedAt: e.PublishedAt}
+		// The translation, if that is what was asked to be read and it is still there;
+		// else the article as it is, in whatever language clean-up found it to be.
+		body, title, language := e.Body(), e.Title, e.Entry.Language
+		if e.Language != "" && e.TranslatedContent != "" {
+			body, language = e.TranslatedContent, e.Language
+			if e.TranslatedTitle != "" {
+				title = e.TranslatedTitle
+			}
+		}
+		text := []rune(htmlx.Speech(body))
+		item := pendingAudio{ID: e.ID, FeedID: e.FeedID, FeedTitle: e.FeedTitle, Title: title, Author: e.Author,
+			URL: e.URL, PublishedAt: e.PublishedAt, Language: language}
 		if len(text) > maxChars {
 			text, item.Truncated = text[:maxChars], true
 		}

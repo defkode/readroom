@@ -266,6 +266,17 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   with `-type`), and reports a failed command on the article. The title is read first.
 - `deploy/tts/tiny-voca-speak` is one such command, around the tiny-voca model: English, two voices,
   far faster than real time on a CPU. It splits paragraphs into sentences, the unit the model reads.
+- **What is read is what the article opens in:** asked for while the article has a translation, the
+  recording is of the translation, title included; otherwise of the article. The queue says which
+  `language` the text is in — the translation's, else the one AI clean-up found, else empty. One
+  recording per article: to hear the other version, remove the recording and ask again.
+- **A voice per language:** the worker's `[speech.for.<code>]` sections give a language its own command
+  and voice name; a text in any other language, or of unknown language, is read by `[speech]` itself.
+  The command is told the language in `READROOM_SPEECH_LANGUAGE`.
+- Readroom ships no voice for any language but English and knows nothing of what a per-language
+  command is: a script of the owner's own, around whatever engine or service they choose. `worker
+  check` does not make a per-language voice speak, since it may cost money; it only looks for the
+  command.
 - **Schedule:** the worker (below) checks the queue every minute on the owner's desktop.
 
 ### AI clean-up
@@ -544,6 +555,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | An article is handed out as pieces of inline HTML and put back together by the server | a model given a whole page of HTML loses images, breaks nesting and runs out of room on a long article; pieces keep the structure out of its hands, can be done a few at a time by a small local model, and make "as many back as went out" a check any client can be held to |
 | Pieces carry their inline markup rather than plain text | a link or an emphasis moves within a sentence when it is translated; only the translator knows where it belongs |
 | A translated article opens in the translation, and a translation that arrives mid-reading does not replace the text | it was asked for in order to be read; but swapping the words under someone's eyes would lose their place |
+| A recording is of the version the article opens in, and voices are chosen per language in the worker | the owner listens to what they would read; no free model the owner tried reads Polish acceptably, so Polish goes to a command of their own choosing while English stays free and local; neither the server nor the worker knows what that command is |
 | The audio API takes any audio file and knows nothing about what made it; `readroom speak` runs any command from text to audio | text-to-speech models change quickly — the first one used, tiny-voca, was days old — and replacing one must not touch the server |
 | Speech is synthesised on the desktop rather than in the browser | tiny-voca's browser build needs a Python runtime in WebAssembly for its phonemizer, about 50 MB to embed and to download, and playback would stop with the phone's screen; a stored file plays like any other audio |
 | Recordings live in the database and are deleted after 30 days | the collection stays one file; speech is large (about 0.36 MB a minute) and listened to once, and can be made again in seconds |
@@ -585,7 +597,10 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
   not on the NAS.
 - Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
   waits (up to 30 days).
-- The bundled text-to-speech script is English only, and mispronounces some names and unusual words.
+- The bundled free text-to-speech script is English only, and mispronounces some names and unusual
+  words. Without a `[speech.for.…]` voice for it, a translation is read by that English voice, badly.
+- A per-language voice may be a paid service; nothing in the app shows what a recording will cost
+  before it is asked for.
 - With AI clean-up on, a feed's new articles appear only while the owner's desktop is on. Nothing in
   the app says so outside Manage feeds.
 - Clean-up judges whole blocks: it cannot remove an advertisement from the middle of a paragraph. It

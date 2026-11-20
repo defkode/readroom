@@ -32,13 +32,26 @@ type Audio struct {
 }
 
 // RequestAudio queues an entry to be read aloud. A recording that exists is
-// left alone; a request that failed is queued again.
+// left alone; a request that failed is queued again. What is read is what the
+// article opens in: its translation if it has one at this moment, else the
+// article itself.
 func (s *Store) RequestAudio(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO entry_audio (entry_id, requested_at) SELECT id, ? FROM entries WHERE id = ?
-ON CONFLICT (entry_id) DO UPDATE SET requested_at = excluded.requested_at, error = ''
+INSERT INTO entry_audio (entry_id, requested_at, language)
+SELECT id, ?, coalesce((SELECT t.language FROM entry_translations t WHERE t.entry_id = entries.id AND t.created_at IS NOT NULL), '')
+FROM entries WHERE id = ?
+ON CONFLICT (entry_id) DO UPDATE SET requested_at = excluded.requested_at, error = '', language = excluded.language
 WHERE entry_audio.created_at IS NULL`, Now(), id)
 	return err
+}
+
+// PendingSpeech is an entry waiting to be read aloud, and its translation when
+// that is what was asked to be read.
+type PendingSpeech struct {
+	*Entry
+	Language          string // of the translation to read; empty to read the article as it is
+	TranslatedTitle   string
+	TranslatedContent string // empty when that translation is no longer there
 }
 
 // PendingAudio lists the entries waiting to be read aloud, in the order they
@@ -47,7 +60,7 @@ WHERE entry_audio.created_at IS NULL`, Now(), id)
 //
 // exclude lists entry ids to leave out, so a client can step past one it could
 // not read.
-func (s *Store) PendingAudio(ctx context.Context, exclude []int64, limit int) ([]*Entry, int, error) {
+func (s *Store) PendingAudio(ctx context.Context, exclude []int64, limit int) ([]PendingSpeech, int, error) {
 	where := `a.created_at IS NULL AND a.error = '' AND e.hidden_at IS NULL AND NOT ` + needsCopyFirst
 	var args []any
 	if len(exclude) > 0 {
@@ -61,19 +74,22 @@ func (s *Store) PendingAudio(ctx context.Context, exclude []int64, limit int) ([
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*)`+from+` WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html`+from+`
-JOIN entry_bodies b ON b.entry_id = e.id WHERE `+where+` ORDER BY a.requested_at, e.id LIMIT ?`, append(args, limit)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html,
+a.language, coalesce(t.title, ''), coalesce(t.content, '')`+from+`
+JOIN entry_bodies b ON b.entry_id = e.id
+LEFT JOIN entry_translations t ON t.entry_id = e.id AND t.created_at IS NOT NULL AND t.language = a.language
+WHERE `+where+` ORDER BY a.requested_at, e.id LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	entries := []*Entry{}
+	entries := []PendingSpeech{}
 	for rows.Next() {
-		e, err := scanEntry(rows, true)
-		if err != nil {
+		var p PendingSpeech
+		if p.Entry, err = scanEntry(rows, &p.Language, &p.TranslatedTitle, &p.TranslatedContent); err != nil {
 			return nil, 0, err
 		}
-		entries = append(entries, e)
+		entries = append(entries, p)
 	}
 	return entries, total, rows.Err()
 }
