@@ -132,7 +132,7 @@ keep(lamp)</code></pre>
 		t.Fatal("not assembled")
 	}
 	for _, s := range []string{
-		`<p>First <a href="https://example.com/x">linked</a> paragraph, with <em>stress</em>.</p><h2>What the board said</h2>`,
+		`<p>First <a href="https://example.com/x">linked</a>[1] paragraph, with <em>stress</em>.</p><h2>What the board said</h2>`,
 		`<blockquote><p>“We like the old lamp,” the chair said.</p></blockquote>`,
 		`<p><img src="/assets/abc" alt="The lamp"></p><p><em>Photo: <a href="/p">Pat</a></em></p>`,
 		`<ul><li>One<ul><li>Nested</li></ul></li><li>Two</li></ul>`,
@@ -153,7 +153,7 @@ keep(lamp)</code></pre>
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{"First [linked](https://example.com/x) paragraph, with *stress*.", "## What the board said",
+	for _, s := range []string{`First [linked](https://example.com/x)\[1] paragraph, with *stress*.`, "## What the board said",
 		"> “We like the old lamp,” the chair said.", "![The lamp](/assets/abc)", "- One\n", "  - Nested\n- Two", "```\nlamp := \"old\"\nkeep(lamp)\n```"} {
 		if !strings.Contains(md, s) {
 			t.Errorf("Markdown lacks %q:\n%s", s, md)
@@ -180,6 +180,56 @@ keep(lamp)</code></pre>
 
 // A newsletter written for e-mail is laid out with tables; its text is cut into
 // blocks all the same, and only a real table of data stays a table.
+func TestLinksSection(t *testing.T) {
+	const article = `<p>Read <a href="https://example.com/x">the report</a> and <a href="https://example.com/x/">it again</a>.</p>
+<p>See <a href="https://www.site.org/a">https://www.site.org/a</a> too.</p>
+<h2>Explore next</h2>
+<ol><li>Osmani, A. (2025). “Loops.” X. <br><a href="https://x.com/a/1">https://x.com/a/1</a></li>
+<li>The report. <a href="https://example.com/x">https://example.com/x</a></li></ol>`
+	blocks := Blocks(article)
+	if len(blocks) != 5 {
+		t.Fatalf("got %d blocks: %+v", len(blocks), blocks)
+	}
+	html, ok := Assemble(blocks, []string{"", "", "ref", "ref", "ref"})
+	if !ok {
+		t.Fatal("not assembled")
+	}
+	// The link the author lists is not listed twice; the heading is ours.
+	want := `<p>Read <a href="https://example.com/x">the report</a>[3] and <a href="https://example.com/x/">it again</a>[3].</p>` +
+		`<p>See <a href="https://www.site.org/a">https://www.site.org/a</a>[1] too.</p>` +
+		`<h2>Links</h2><ol><li><a href="https://www.site.org/a">https://www.site.org/a</a></li>` +
+		`<li>Osmani, A. (2025). “Loops.” X. <a href="https://x.com/a/1">https://x.com/a/1</a></li>` +
+		`<li>The report. <a href="https://example.com/x">https://example.com/x</a></li></ol>`
+	if html != want {
+		t.Fatalf("assembled:\n got %s\nwant %s", html, want)
+	}
+	// It survives the trip through Markdown, and is then kept from a voice and a translator.
+	md, _ := Markdown(html)
+	shown, _ := FromMarkdown(md)
+	if got := Speech(shown); got != "Read the report and it again.\nSee too." {
+		t.Errorf("spoken: %q", got)
+	}
+	pieces := Pieces(shown)
+	if len(pieces) != 2 {
+		t.Fatalf("pieces: %q", pieces)
+	}
+	translated, ok := ReplacePieces(shown, []string{"Jeden.", "Dwa."})
+	if !ok || !strings.Contains(translated, "Osmani, A. (2025)") || !strings.Contains(translated, "<h2>Links</h2>") {
+		t.Errorf("translated: %v %s", ok, translated)
+	}
+	if rest := WithoutLinks(shown); strings.Contains(rest, "Osmani") || !strings.Contains(rest, "it again") {
+		t.Errorf("without links: %s", rest)
+	}
+	// A link in the text, named by its words, says where it leads.
+	html, _ = Assemble(Blocks(`<p>Read <a href="https://example.com/x">the report</a>.</p>`), []string{""})
+	if !strings.HasPrefix(html, `<p>Read <a href="https://example.com/x">the report</a>[1].</p>`) {
+		t.Errorf("a link in the text is not numbered: %s", html)
+	}
+	if !strings.HasSuffix(html, `<h2>Links</h2><ol><li><a href="https://example.com/x">the report</a> · example.com</li></ol>`) {
+		t.Errorf("a link in the text: %s", html)
+	}
+}
+
 func TestBlocksInLayoutTables(t *testing.T) {
 	const issue = `<table><tbody><tr><td><div>
 <table><tbody><tr><td align="left"><p>#827 — November 19</p></td><td align="right"><p><a href="/web">Read on the Web</a></p></td></tr></tbody></table>

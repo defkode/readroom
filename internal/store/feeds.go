@@ -103,10 +103,12 @@ func (s *Store) Feed(ctx context.Context, id int64) (*Feed, error) {
 
 // SavedFeed returns the built-in feed that holds the articles saved by address,
 // creating it the first time. It keeps its articles forever and is never fetched.
+// Like summaries, AI clean-up is on for it from the start: an article saved by
+// hand is one the owner means to read.
 func (s *Store) SavedFeed(ctx context.Context) (*Feed, error) {
 	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO feeds (url, kind, custom_title, ai_summary, keep_days, created_at)
-VALUES ('readroom:saved', 'saved', 'Saved articles', 1, 0, ?) ON CONFLICT (url) DO NOTHING`, Now()); err != nil {
+INSERT INTO feeds (url, kind, custom_title, ai_summary, ai_cleanup, keep_days, created_at)
+VALUES ('readroom:saved', 'saved', 'Saved articles', 1, 1, 0, ?) ON CONFLICT (url) DO NOTHING`, Now()); err != nil {
 		return nil, err
 	}
 	return scanFeed(s.db.QueryRowContext(ctx, feedSelect+` WHERE f.kind = 'saved'`))

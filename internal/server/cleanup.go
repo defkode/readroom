@@ -97,11 +97,11 @@ func (s *Server) apiSetCleanup(w http.ResponseWriter, r *http.Request) {
 	blocks := htmlx.Blocks(source)
 	clean, ok := htmlx.Assemble(blocks, in.Roles)
 	if !ok {
-		writeError(w, http.StatusUnprocessableEntity, "roles must hold one of keep, drop, h2, h3, text, quote for each of the "+
+		writeError(w, http.StatusUnprocessableEntity, "roles must hold one of keep, drop, h2, h3, text, quote, ref for each of the "+
 			strconv.Itoa(len(blocks))+" blocks the queue handed out, in the same order")
 		return
 	}
-	if len(blocks) > 0 && htmlx.Flat(clean) == "" && !strings.Contains(clean, "<img") {
+	if len(blocks) > 0 && htmlx.Flat(htmlx.WithoutLinks(clean)) == "" && !strings.Contains(clean, "<img") {
 		writeError(w, http.StatusUnprocessableEntity, "every block was dropped, which would leave an empty article")
 		return
 	}

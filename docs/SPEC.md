@@ -252,12 +252,14 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   ordinary way. A real page load (a refresh, signing out) stops the sound; the player comes back
   paused where it was, one tap from going on.
 - **Queue:** `GET /api/v1/audio/pending` returns the requested articles, oldest request first, as plain
-  text for speech: one paragraph per line; code listings, tables and figures left out; every line
+  text for speech: one paragraph per line; code listings, tables, figures, addresses written out and
+  the list of links a clean copy ends with left out; every line
   closed by punctuation so a heading does not run into the next sentence. Hidden articles are skipped,
   and one whose full local copy is still on its way waits for it, as with summaries.
 - `PUT /api/v1/entries/{id}/audio?voice=…` stores the recording: the body is the file, in any `audio/*`
   type, up to 64 MB. `POST …/audio/error` records a failure, which takes the article out of the queue
-  until asked for again. `GET` serves the recording with byte ranges; `DELETE` removes it or withdraws
+  until asked for again. `GET` serves the recording with byte ranges, or with `?download` as a file
+  named after the article (the Download link beside Listen); `DELETE` removes it or withdraws
   the request.
 - **Recordings are deleted 30 days after they were made**, by the hourly sweep; so are requests nobody
   answered in that time. The article is untouched and can be asked for again.
@@ -293,10 +295,18 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   rows of the same two or more cells. Any other table is one that lays the page out, as newsletters
   written for e-mail are built, and is cut into the blocks its cells hold. (Before this, a whole
   newsletter issue was two blocks, and clean-up could only keep or drop all of it.)
-- A client gives each block a **role**: `keep`, `drop`, or for text `h2`, `h3`, `text`, `quote`. The
+- A client gives each block a **role**: `keep`, `drop`, or for text `h2`, `h3`, `text`, `quote`, `ref`. The
   server assembles the kept blocks, converts the result to **Markdown**, and stores that as the clean
   copy beside the original, which is never changed. What is shown is the HTML that Markdown renders
   to, so the Markdown is the copy and not a by-product.
+- **Every clean copy ends with its links**, under the heading "Links": one numbered list of whatever
+  the text links to — in order, each once, named by its words and its site — followed by the entries
+  of the author's own list of sources or further reading (role `ref`; the heading the author gave it
+  gives way to "Links"). Some authors index their links and some do not; this makes it the same
+  everywhere. The links in the text stay where they are, each followed by its number in the list
+  as plain text, "[3]" — what Markdown can carry; speech leaves such numbers out. The list is there to be clicked: it is not
+  handed out for speech, translation or summaries, and does not count towards the reading time. It
+  is recognised by its place and heading (`htmlx.linksSection`), so the Markdown needs no marker.
 - **The clean copy is what everything uses** once it exists: the reader, EPUB and Markdown export, the
   text handed out for summaries, translation and speech, the reading time. "Show unedited" in the
   article (`?unedited=1`) shows the article as it came.
@@ -584,6 +594,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | CI compiles the binaries on the runner and the image build only copies them in; the same Dockerfile still compiles by itself everywhere else | inside the image build every change recompiled everything for both platforms, most of a five-minute run; the runner keeps Go's build cache between runs |
 | The specifics of the owner's installation live in a private runbook, not here | the repository is public; an address or the deployed version helps nobody else and dates quickly |
 | MIT licence | the repository is public, and without a licence nobody else may use the code; MIT is the simplest permissive one for a small personal tool. The bundled font keeps its own Open Font License |
+| A clean copy ends with one list of the article's links, kept out of speech and translation | the owner lost minutes of a paid recording to a bibliography read out address by address; and whether an article indexes its links should not depend on its author |
+| Articles saved by address have AI clean-up on from the start | one saved by hand is one the owner means to read, often aloud; the same reasoning as for summaries |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions

@@ -171,7 +171,7 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
 | `POST /entries/{id}/audio` | ask for the article to be read aloud; the entry's `audio` is then `queued`, later `ready` or `failed` |
 | `GET /audio/pending` | work queue for a text-to-speech client — see below; `limit`, `max_chars`, `exclude` |
-| `PUT /entries/{id}/audio?voice=…` | the recording itself as the body, with its `audio/*` content type; `GET` plays it back (byte ranges supported), `DELETE` removes it or withdraws the request |
+| `PUT /entries/{id}/audio?voice=…` | the recording itself as the body, with its `audio/*` content type; `GET` plays it back (byte ranges supported; `?download` sends it as a file named after the article), `DELETE` removes it or withdraws the request |
 | `POST /entries/{id}/audio/error` | `{error}` — a client reporting that it could not make the recording |
 | `POST /entries/{id}/translation` | ask for the article to be translated into `READROOM_LANGUAGE`; the entry's `translation` is then `queued`, later `ready` or `failed` |
 | `GET /translations/pending` | work queue for a translating client — see below; `limit`, `exclude` |
@@ -336,10 +336,13 @@ and `PUT /api/v1/entries/42/cleanup` takes one **role** for each block, in order
 {"of": "3f9c0a1b77d2", "language": "en", "model": "qwen3.6", "roles": ["drop", "keep", "keep", "keep"]}
 ```
 
-A role is `keep` (as it is), `drop`, or — for text — `h2`, `h3`, `text` or `quote`. The server builds
-the clean copy from its own blocks, so the worst a wrong answer can do is drop or mislabel one; `409`
-means the article has changed since (take it again), `422` the wrong number of roles or all of them
-`drop`. `POST …/cleanup/error` with `{"error": "…"}` gives up on an article; `DELETE …/cleanup` removes
+A role is `keep` (as it is), `drop`, or — for text — `h2`, `h3`, `text`, `quote` or `ref` (an entry of
+the author's own list of sources, or its heading). The server builds the clean copy from its own
+blocks and ends it with a numbered list, "Links", of everything the article links to and every `ref` (each link in the text is followed by its number
+there, as "[3]");
+that list is never read aloud or translated. No word comes from the client, so the worst a wrong
+answer can do is drop or mislabel a block; `409` means the article has changed since (take it again),
+`422` the wrong number of roles or all of them `drop`. `POST …/cleanup/error` with `{"error": "…"}` gives up on an article; `DELETE …/cleanup` removes
 its clean copy and queues it again.
 
 `readroom clean` is an ordinary client of that queue, with the same choice of model as

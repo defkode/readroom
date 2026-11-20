@@ -50,6 +50,7 @@
     {{if eq .Audio "ready"}}
     <p>{{icon "audio"}}<span>{{if .AudioVoice}}Read by {{.AudioVoice}} · {{end}}kept until {{$.Page.AudioUntil}}</span>
       <button class="play" data-action="play-audio" data-id="{{.ID}}" data-src="/api/v1/entries/{{.ID}}/audio?v={{.AudioAt}}" data-title="{{.Title}}" data-feed="{{.FeedTitle}}">Listen</button>
+      <a class="button" href="/api/v1/entries/{{.ID}}/audio?download&amp;v={{.AudioAt}}" download>Download</a>
       <button data-action="delete-audio" data-id="{{.ID}}" data-confirm>Remove</button></p>
     {{else if eq .Audio "failed"}}
     <p>{{icon "audio"}}<span>Could not be read aloud: {{.AudioError}}</span>

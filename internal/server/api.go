@@ -553,7 +553,7 @@ func (s *Server) apiPendingSummaries(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]pendingSummary, 0, len(entries))
 	for _, e := range entries {
-		text := []rune(htmlx.Text(e.Body()))
+		text := []rune(htmlx.Text(htmlx.WithoutLinks(e.Body())))
 		item := pendingSummary{ID: e.ID, FeedID: e.FeedID, FeedTitle: e.FeedTitle, Title: e.Title, URL: e.URL,
 			PublishedAt: e.PublishedAt, TextLength: e.TextLength}
 		if len(text) > maxChars {

@@ -49,6 +49,9 @@ h2 - the block is the heading of a section of the article but is not marked as a
 h3 - the same, for a heading within a section.
 text - the block is marked as a heading or a quotation but is an ordinary paragraph.
 quote - the block is a passage quoted from someone else or another source, set apart from the text, and not marked as a quotation.
+ref - the block is an entry of the author's own list of sources, references, footnote links or further reading, ` +
+	`usually at the end of the article, or the heading over that list. Such a list is kept, apart from the text. ` +
+	`A list that is the article itself, such as the items of a newsletter, is not one.
 
 Do not list blocks that are fine as they are; most are. Never drop anything the author wrote as part of the article, ` +
 	`and when you are not sure, leave the block out of your reply. Reply with nothing else: no explanations. ` +
@@ -56,7 +59,7 @@ Do not list blocks that are fine as they are; most are. Never drop anything the 
 
 var (
 	cleanLanguage = regexp.MustCompile(`(?mi)^\s*language\s*:\s*([a-z]{2,3})\b`)
-	cleanChange   = regexp.MustCompile(`(?mi)^\s*(\d+)[\s:.)-]+(drop|h2|h3|text|quote)\b`)
+	cleanChange   = regexp.MustCompile(`(?mi)^\s*(\d+)[\s:.)-]+(drop|h2|h3|text|quote|ref)\b`)
 )
 
 type cleanBlock struct {

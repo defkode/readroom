@@ -80,7 +80,7 @@ func (s *Store) SaveCleanup(ctx context.Context, id int64, c Cleanup) error {
 	now := Now()
 	if err := affected(tx.ExecContext(ctx, `
 UPDATE entries SET language = ?, cleaned_at = ?, cleanup_model = ?, cleanup_error = '', text_length = ?, `+arrive+` WHERE id = ?`,
-		c.Language, now, c.Model, utf8.RuneCountInString(htmlx.Flat(c.HTML)), now, id)); err != nil {
+		c.Language, now, c.Model, utf8.RuneCountInString(htmlx.Flat(htmlx.WithoutLinks(c.HTML))), now, id)); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE entry_bodies SET clean = ?, clean_html = ? WHERE entry_id = ?`, c.Markdown, c.HTML, id); err != nil {

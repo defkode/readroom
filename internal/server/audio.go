@@ -152,7 +152,8 @@ func (s *Server) apiAudioFailed(w http.ResponseWriter, r *http.Request) {
 	s.apiEntry(w, r)
 }
 
-// apiAudio serves the recording, with byte ranges so a player can seek in it.
+// apiAudio serves the recording, with byte ranges so a player can seek in it;
+// with ?download it is sent as a file named after the article.
 func (s *Server) apiAudio(w http.ResponseWriter, r *http.Request) {
 	a, err := s.Store.Audio(r.Context(), pathID(r, "id"))
 	if err != nil {
@@ -161,10 +162,37 @@ func (s *Server) apiAudio(w http.ResponseWriter, r *http.Request) {
 	}
 	h := w.Header()
 	h.Set("Content-Type", a.MIME)
+	if r.URL.Query().Has("download") {
+		// As a file to keep or pass on, named after the article.
+		title := ""
+		if e, err := s.Store.Entry(r.Context(), pathID(r, "id")); err == nil {
+			title = e.Title
+		}
+		attachment(w, a.MIME, fileName(title, audioExt(a.MIME)))
+	}
 	h.Set("Cache-Control", "private, max-age=86400")
 	h.Set("X-Content-Type-Options", "nosniff")
 	made, _ := time.Parse(store.TimeFormat, a.CreatedAt)
 	http.ServeContent(w, r, "", made, bytes.NewReader(a.Data))
+}
+
+// audioExt is the file extension a recording of this type is saved with.
+func audioExt(mime string) string {
+	switch mime {
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/mp4", "audio/aac":
+		return ".m4a"
+	case "audio/ogg", "audio/opus":
+		return ".ogg"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "audio/webm":
+		return ".webm"
+	case "audio/flac":
+		return ".flac"
+	}
+	return ".audio"
 }
 
 func (s *Server) apiDeleteAudio(w http.ResponseWriter, r *http.Request) {

@@ -222,6 +222,10 @@ CREATE INDEX entries_uncleaned ON entries (feed_id) WHERE cleaned_at IS NULL AND
 -- recording, so it is only ever read for requests still waiting, which have none.
 ALTER TABLE entry_audio ADD COLUMN language TEXT NOT NULL DEFAULT '';
 `,
+	`
+-- Articles saved by address get AI clean-up from the start, as they get summaries.
+UPDATE feeds SET ai_cleanup = 1 WHERE kind = 'saved';
+`,
 }
 
 func Open(path string) (*Store, error) {

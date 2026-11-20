@@ -2,6 +2,8 @@
 package htmlx
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -221,12 +223,59 @@ var notSpoken = map[string]bool{"pre": true, "table": true, "figure": true, "svg
 func Speech(s string) string {
 	lines := strings.Split(text(s, notSpoken), "\n")
 	for i, l := range lines {
+		// A link's number in the list of links, or a footnote's: nothing to say aloud.
+		l = strings.Join(strings.Fields(linkNumber.ReplaceAllString(l, "")), " ")
+		l = strings.NewReplacer(" .", ".", " ,", ",", " ;", ";", " :", ":").Replace(l)
+		lines[i] = l
 		if l != "" && !strings.ContainsRune(".!?:;…", lastLetter(l)) {
 			lines[i] = l + "."
 		}
 	}
 	return strings.Join(lines, "\n")
 }
+
+// linksSection finds the list of links a clean copy ends with (see
+// LinksHeading) among an article's top-level nodes: its heading and the list
+// itself, or nil for both. Nothing after it is the article's text, so it is
+// neither read aloud nor translated nor counted.
+func linksSection(nodes []*html.Node) (heading, list *html.Node) {
+	var last []*html.Node
+	for _, n := range nodes {
+		if n.Type == html.ElementNode {
+			last = append(last, n)
+		}
+	}
+	if len(last) < 2 {
+		return nil, nil
+	}
+	heading, list = last[len(last)-2], last[len(last)-1]
+	if heading.Data != "h2" || list.Data != "ol" || strings.TrimSpace(text1(heading)) != LinksHeading {
+		return nil, nil
+	}
+	return heading, list
+}
+
+// WithoutLinks returns an article's HTML without the list of links a clean copy
+// ends with: the article proper.
+func WithoutLinks(content string) string {
+	nodes, err := ParseFragment(content)
+	if err != nil {
+		return content
+	}
+	heading, list := linksSection(nodes)
+	if heading == nil {
+		return content
+	}
+	var kept []*html.Node
+	for _, n := range nodes {
+		if n != heading && n != list {
+			kept = append(kept, n)
+		}
+	}
+	return Render(kept)
+}
+
+var linkNumber = regexp.MustCompile(`\[\d{1,3}\]`)
 
 // lastLetter is the last character of l, looking past closing quotes and brackets.
 func lastLetter(l string) rune {
@@ -249,6 +298,9 @@ func text(s string, skip map[string]bool) string {
 			b.WriteString("\n")
 			return
 		}
+		if skip != nil && n.Type == html.ElementNode && n.Data == "a" && isAddress(text1(n)) {
+			return // an address read out letter by letter tells a listener nothing
+		}
 		if n.Type == html.TextNode {
 			b.WriteString(n.Data)
 		}
@@ -259,7 +311,11 @@ func text(s string, skip map[string]bool) string {
 			b.WriteString("\n")
 		}
 	}
+	heading, list := linksSection(nodes)
 	for _, n := range nodes {
+		if skip != nil && (n == heading || n == list) {
+			continue // links are for clicking
+		}
 		walk(n)
 	}
 	var lines []string
@@ -329,7 +385,7 @@ func hasLetters(n *html.Node) bool {
 
 // pieceRuns collects, in document order, every run of sibling inline nodes under
 // parent that holds something to translate.
-func pieceRuns(parent *html.Node, out *[][]*html.Node) {
+func pieceRuns(parent *html.Node, out *[][]*html.Node, skip ...*html.Node) {
 	var run []*html.Node
 	flush := func() {
 		for _, n := range run {
@@ -346,7 +402,7 @@ func pieceRuns(parent *html.Node, out *[][]*html.Node) {
 			run = append(run, c)
 		default:
 			flush()
-			if c.Type == html.ElementNode && !pieceSkip[c.Data] {
+			if c.Type == html.ElementNode && !pieceSkip[c.Data] && !slices.Contains(skip, c) {
 				pieceRuns(c, out)
 			}
 		}
@@ -363,8 +419,11 @@ func pieceTree(content string) (*html.Node, [][]*html.Node, error) {
 	for _, n := range nodes {
 		root.AppendChild(n)
 	}
+	// The links a clean copy ends with stay as they are: a source is found by
+	// the title it was published under.
+	heading, list := linksSection(nodes)
 	var runs [][]*html.Node
-	pieceRuns(root, &runs)
+	pieceRuns(root, &runs, heading, list)
 	return root, runs, nil
 }
 

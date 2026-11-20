@@ -97,12 +97,22 @@ const (
 	RoleH3    = "h3"
 	RoleText  = "text"
 	RoleQuote = "quote"
+	// RoleRef is an entry of the author's own list of sources or further reading,
+	// or the heading over it: it leaves the text and joins the article's links.
+	RoleRef = "ref"
 )
+
+// LinksHeading stands over the list of links that closes a clean copy. Every
+// clean copy ends the same way: whatever the article links to, and whatever its
+// author listed as sources, in one numbered list. It is there to be clicked, not
+// to be read out or translated: see linksSection. Each link in the text carries
+// its number in that list, as "[3]" after it.
+const LinksHeading = "Links"
 
 // ValidRole reports whether r is one of the roles.
 func ValidRole(r string) bool {
 	switch r {
-	case "", RoleKeep, RoleDrop, RoleH2, RoleH3, RoleText, RoleQuote:
+	case "", RoleKeep, RoleDrop, RoleH2, RoleH3, RoleText, RoleQuote, RoleRef:
 		return true
 	}
 	return false
@@ -368,18 +378,26 @@ func Blocks(content string) []Block {
 // Assemble puts blocks back together as HTML, each in the role given for it, and
 // reports false when roles are not one per block or one of them is unknown. The
 // result uses nothing but headings, paragraphs, quotations, lists, code listings,
-// pictures, tables and the inline marks Blocks keeps.
+// pictures, tables and the inline marks Blocks keeps. It ends with the article's
+// links, under LinksHeading, when it has any.
 func Assemble(blocks []Block, roles []string) (string, bool) {
 	if len(roles) != len(blocks) {
 		return "", false
 	}
-	var kept []Block
+	var kept, refs []Block
 	for i, b := range blocks {
 		role := roles[i]
 		if !ValidRole(role) {
 			return "", false
 		}
 		if role == RoleDrop {
+			continue
+		}
+		if role == RoleRef {
+			// The heading of the author's list gives way to LinksHeading.
+			if b.Kind == BlockText || b.Kind == BlockItem {
+				refs = append(refs, b)
+			}
 			continue
 		}
 		if b.Kind == BlockHeading || b.Kind == BlockText || b.Kind == BlockItem {
@@ -401,6 +419,17 @@ func Assemble(blocks []Block, roles []string) (string, bool) {
 			continue
 		}
 		out = append(out, b)
+	}
+
+	// Every link in the text is followed by its number in the list the copy ends with.
+	items, numbers := linkItems(out, refs)
+	for i := range out {
+		switch out[i].Kind {
+		case BlockHeading, BlockText, BlockItem:
+			out[i].HTML = numberLinks(out[i].HTML, numbers)
+		case BlockImage:
+			out[i].Caption = numberLinks(out[i].Caption, numbers)
+		}
 	}
 
 	var w strings.Builder
@@ -468,7 +497,127 @@ func Assemble(blocks []Block, roles []string) (string, bool) {
 	if quote {
 		w.WriteString("</blockquote>")
 	}
+	if len(items) > 0 {
+		w.WriteString("<h2>" + LinksHeading + "</h2><ol>")
+		for _, item := range items {
+			w.WriteString("<li>" + item + "</li>")
+		}
+		w.WriteString("</ol>")
+	}
 	return w.String(), true
+}
+
+// link is one link in a block's inline HTML.
+type link struct{ href, text string }
+
+func linksIn(inlineHTML string) []link {
+	nodes, err := ParseFragment(inlineHTML)
+	if err != nil {
+		return nil
+	}
+	var out []link
+	Walk(nodes, func(n *html.Node) {
+		if n.Type != html.ElementNode || n.Data != "a" {
+			return
+		}
+		href := strings.TrimSpace(Attr(n, "href"))
+		if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+			out = append(out, link{href, Flat(Render(children(n)))})
+		}
+	})
+	return out
+}
+
+// linkKey is what makes two links the same link.
+func linkKey(href string) string {
+	href, _, _ = strings.Cut(href, "#")
+	href = strings.TrimPrefix(strings.TrimPrefix(href, "https://"), "http://")
+	return strings.TrimSuffix(strings.TrimPrefix(href, "www."), "/")
+}
+
+// isAddress reports whether text is a web address written out.
+func isAddress(text string) bool {
+	text = strings.TrimSpace(text)
+	return !strings.ContainsAny(text, " \t\n") &&
+		(strings.HasPrefix(text, "http://") || strings.HasPrefix(text, "https://") || strings.HasPrefix(text, "www."))
+}
+
+// numberLinks writes after each link in inline HTML its number in the list of
+// links, as "[3]": plain text, which is what Markdown can carry.
+func numberLinks(inlineHTML string, numbers map[string]int) string {
+	if !strings.Contains(inlineHTML, "<a ") {
+		return inlineHTML
+	}
+	nodes, err := ParseFragment(inlineHTML)
+	if err != nil {
+		return inlineHTML
+	}
+	root := &html.Node{Type: html.ElementNode, Data: "div"}
+	for _, n := range nodes {
+		root.AppendChild(n)
+	}
+	var anchors []*html.Node
+	Walk(nodes, func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			anchors = append(anchors, n)
+		}
+	})
+	marked := false
+	for _, a := range anchors {
+		if n := numbers[linkKey(strings.TrimSpace(Attr(a, "href")))]; n > 0 && a.Parent != nil {
+			a.Parent.InsertBefore(&html.Node{Type: html.TextNode, Data: "[" + strconv.Itoa(n) + "]"}, a.NextSibling)
+			marked = true
+		}
+	}
+	if !marked {
+		return inlineHTML
+	}
+	return strings.ReplaceAll(Render(children(root)), "<br/>", "<br>")
+}
+
+// linkItems lists an article's links, each once: those in its text in the order
+// they come, named by their words and their site, then the entries of the
+// author's own list as the author wrote them. numbers gives each link's place in
+// that list, starting at 1, by its linkKey.
+func linkItems(body, refs []Block) (items []string, numbers map[string]int) {
+	seen := map[string]bool{}
+	for _, b := range refs {
+		for _, l := range linksIn(b.HTML) {
+			seen[linkKey(l.href)] = true
+		}
+	}
+	numbers = map[string]int{}
+	for _, b := range body {
+		var from string
+		switch b.Kind {
+		case BlockHeading, BlockText, BlockItem:
+			from = b.HTML
+		case BlockImage:
+			from = b.Caption
+		}
+		for _, l := range linksIn(from) {
+			if key := linkKey(l.href); l.text != "" && !seen[key] {
+				seen[key] = true
+				item := `<a href="` + stdhtml.EscapeString(l.href) + `">` + stdhtml.EscapeString(l.text) + `</a>`
+				if host, _, _ := strings.Cut(linkKey(l.href), "/"); !isAddress(l.text) && host != "" {
+					item += " · " + stdhtml.EscapeString(host)
+				}
+				items = append(items, item)
+				numbers[key] = len(items)
+			}
+		}
+	}
+	for _, b := range refs {
+		if item := strings.TrimSpace(strings.ReplaceAll(b.HTML, "<br>", " ")); item != "" {
+			items = append(items, strings.Join(strings.Fields(item), " "))
+			for _, l := range linksIn(b.HTML) {
+				if key := linkKey(l.href); numbers[key] == 0 {
+					numbers[key] = len(items)
+				}
+			}
+		}
+	}
+	return items, numbers
 }
 
 // stripMarks removes bold and italic from inline HTML: a heading or a caption is

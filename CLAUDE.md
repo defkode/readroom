@@ -78,13 +78,15 @@ shows what it did. See SPEC §4.
 ## AI clean-up
 
 Per feed, off by default (`ai_cleanup`). For a feed that has it on, a model reads every article before
-it is shown: it says the language and gives each block a role (keep, drop, heading, text, quote). The
+it is shown: it says the language and gives each block a role (keep, drop, heading, text, quote, ref). The
 model never writes article text — `internal/htmlx/clean.go` cuts the blocks (`Blocks`) and builds the
 clean copy from the roles (`Assemble`), stored as Markdown beside the untouched original. `Entry.Body()`
 returns the clean copy when there is one, so everything downstream uses it; `Entry.Source()` is the
 article as it came. New articles of such a feed are *held* (`entries.held`: in no list or count) until
 `PUT /api/v1/entries/{id}/cleanup` or a reported failure releases them — any new list or count query
-must exclude held entries. `readroom clean` / the worker's `[cleanup]` section is the client. See SPEC §4.
+must exclude held entries. A clean copy ends with a "Links" list (the text's links and the author's
+`ref` blocks) that speech, translation and summaries never get — `htmlx.linksSection` finds it. The
+saved-articles feed has clean-up on by default. `readroom clean` / the worker's `[cleanup]` section is the client. See SPEC §4.
 
 ## Translation
 

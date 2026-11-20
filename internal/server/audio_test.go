@@ -120,6 +120,18 @@ func TestAudio(t *testing.T) {
 	if resp.Header.Get("Content-Type") != "audio/ogg" || !bytes.Equal(got, sound) {
 		t.Errorf("download: type %q, %d bytes", resp.Header.Get("Content-Type"), len(got))
 	}
+	if d := resp.Header.Get("Content-Disposition"); d != "" {
+		t.Errorf("played back as an attachment: %q", d)
+	}
+	// Asked for as a file, it is named after the article.
+	resp = a.call("GET", "/api/v1/entries/1/audio?download", nil, nil)
+	got, _ = io.ReadAll(resp.Body)
+	if d := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(d, "attachment;") || !strings.Contains(d, ".ogg") || !bytes.Equal(got, sound) {
+		t.Errorf("download as a file: disposition %q, %d bytes", d, len(got))
+	}
+	if !strings.Contains(page(), `/api/v1/entries/1/audio?download`) {
+		t.Error("article has no link to download its recording")
+	}
 	req, _ := http.NewRequest("GET", a.url+"/api/v1/entries/1/audio", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	req.Header.Set("Range", "bytes=6-11")
