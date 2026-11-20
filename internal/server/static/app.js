@@ -268,6 +268,20 @@ window.readroomBoot = (signal, soft) => {
       if (playing && playing.id === +el.dataset.id) readroomPlayer.close();
       await refreshAudio();
     },
+    // Ask for the article in the owner's language; where that stands is shown under the title.
+    async 'request-translation'(el) {
+      el.disabled = true;
+      await api('POST', `/entries/${el.dataset.id}/translation`);
+      await refreshTranslation(location.href);
+    },
+    async 'delete-translation'(el) {
+      if ('confirm' in el.dataset && !confirm('Remove the translation of this article?')) return;
+      await api('DELETE', `/entries/${el.dataset.id}/translation`);
+      // The text on the page may be the translation that is now gone.
+      readroomNav.replace(location.pathname);
+    },
+    // The other version of the article takes this one's place, in the page and in the history.
+    'show-version'(el) { readroomNav.replace(el.dataset.href); },
     // Go on from where the article was left, here or on another device.
     'resume-reading'() { resume(true); },
     'dismiss-resume'() { resume(false); },
@@ -703,6 +717,42 @@ window.readroomBoot = (signal, soft) => {
     const mine = state && state.id === +button.dataset.id;
     button.textContent = mine && state.playing ? 'Pause' : mine ? 'Resume' : 'Listen';
   };
+
+  // ---- translation --------------------------------------------------------------
+  // Made outside the server like a recording, and watched for the same way. When it
+  // arrives the text being read is left alone: the notice offers the translation.
+  const refreshTranslation = async (from) => {
+    const res = await fetch(from);
+    if (!res.ok || signal.aborted) return;
+    const fresh = new DOMParser().parseFromString(await res.text(), 'text/html');
+    for (const part of ['#translation', '.article .status']) {
+      const now = fresh.querySelector(part), old = document.querySelector(part);
+      if (now && old) old.replaceWith(now);
+    }
+    watchTranslation();
+  };
+  let translationTimer;
+  const watchTranslation = () => {
+    clearTimeout(translationTimer);
+    const box = document.getElementById('translation');
+    if (!box || box.dataset.state !== 'queued' || document.hidden) return;
+    translationTimer = setTimeout(async () => {
+      try {
+        const entry = await api('GET', `/entries/${article.dataset.id}`);
+        if (entry.translation !== 'queued') {
+          await refreshTranslation(`${location.pathname}?original=1`);
+          if (entry.translation === 'ready') toast('The translation is ready');
+          return;
+        }
+      } catch { /* try again next time */ }
+      watchTranslation();
+    }, 5000);
+  };
+  signal.addEventListener('abort', () => clearTimeout(translationTimer));
+  if (article) {
+    watchTranslation();
+    on(document, 'visibilitychange', watchTranslation);
+  }
   if (article) {
     watchAudio();
     showPlaying();

@@ -4,8 +4,8 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 
 - Web app for phone, tablet and desktop (installable: "Add to Home Screen" / "Install app")
 - REST API for everything the UI does — summaries, read/starred, readlists, exports
-- AI summaries and articles read aloud, made by models you run yourself on another computer —
-  the server stays small enough for a NAS or a Raspberry Pi
+- AI summaries, articles read aloud and articles translated into your own language, made by models
+  you run yourself on another computer — the server stays small enough for a NAS or a Raspberry Pi
 - Save any single article by its address — from a field in the app, or by sharing a page to the installed app on Android
 - Per-feed settings: name, category, and whether to keep full local copies of articles (and since when)
 - Preserved articles (text + images) live inside the database, so they survive the original going away
@@ -31,6 +31,7 @@ Without Docker on the target: `make build` produces `bin/readroom` (static, no d
 | `READROOM_TOKEN_FILE` | | read the token from this file instead; a random one is generated there on first run |
 | `READROOM_INTERVAL` | `30m` | how often each feed is polled |
 | `READROOM_LOG` | `info` | `debug` logs every request |
+| `READROOM_LANGUAGE` | *(none)* | your own language, e.g. `pl`: lets an article be [translated](#translation) into it on request. Optional; without it nothing about translation appears |
 
 For Proxmox (amd64), `make image-multiarch` writes loadable image archives to `dist/`.
 For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (arm64 and amd64) from
@@ -38,12 +39,13 @@ For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (
 it (Readroom behind its own Tailscale HTTPS node). `make image-qnap` still builds an arm64 archive
 that Container Station can import, for when the registry is out of reach.
 
-## The worker: summaries and listening
+## The worker: summaries, listening and translation
 
-The server can sit on something very small because the models run elsewhere: it only keeps two queues,
-articles waiting for a summary and articles asked to be read aloud. `readroom worker` is that elsewhere
-in one piece. Install it on a computer that has the models (a desktop, usually), and it keeps both
-queues empty whenever that computer is on. Either half is optional.
+The server can sit on something very small because the models run elsewhere: it only keeps queues —
+articles waiting for a summary, articles asked to be read aloud, articles asked for in your own
+language. `readroom worker` is that elsewhere in one piece. Install it on a computer that has the
+models (a desktop, usually), and it keeps the queues empty whenever that computer is on. Each part is
+optional.
 
 **1. Download the binary** and put it somewhere on your `PATH`. It is the same single `readroom`
 file as the server, with nothing else to install; `~/.local/bin` is the usual place for a program of
@@ -74,6 +76,7 @@ if it is already running.
 - For summaries: a model behind an OpenAI-compatible address — [Ollama](https://ollama.com),
   llama.cpp's `llama-server`, LM Studio, a hosted service — or the `claude` CLI, or any command that
   takes a prompt and prints an answer.
+- For translation: the same kind of model as for summaries, but one that writes your language well.
 - For listening: `ffmpeg`, and a text-to-speech command — see [Listening](#listening) for using your
   own. The bundled one, `tiny-voca-speak` (English), needs only [uv](https://docs.astral.sh/uv/) and
   downloads its model (27 MB) on first use. It is a second file to put beside the first:
@@ -98,6 +101,10 @@ model = "llama3.2"
 # command = "llm -m gpt-5-mini"           # or any command: prompt in, summary out
 # every = "5m"
 
+# [translations]                          # same settings as [summaries]; into the server's READROOM_LANGUAGE
+# api = "http://127.0.0.1:11434/v1"
+# model = "llama3.2"
+
 [speech]
 command = "tiny-voca-speak"               # any command: text in, audio out
 voice = "tiny-voca M2"
@@ -108,9 +115,10 @@ voice = "tiny-voca M2"
 **4. Try it.** `readroom worker check` tries every part once and changes nothing on the server:
 
 ```
-ok    server     https://readroom.example.ts.net answers and accepts the token
-ok    summaries  llama3.2 in 3.0s: The harbour board voted against replacing the lamp…
-ok    speech     9 kB of audio/mpeg in 0.4s
+ok    server       https://readroom.example.ts.net answers and accepts the token
+ok    summaries    llama3.2 in 3.0s: The harbour board voted against replacing the lamp…
+ok    translations llama3.2 into Polish in 2.1s: Latarnia morska zachowuje swoją lampę / …
+ok    speech       9 kB of audio/mpeg in 0.4s
 ```
 
 **5. Leave it running.** `readroom worker install` sets it up as a systemd user service that starts
@@ -153,6 +161,10 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `GET /audio/pending` | work queue for a text-to-speech client — see below; `limit`, `max_chars`, `exclude` |
 | `PUT /entries/{id}/audio?voice=…` | the recording itself as the body, with its `audio/*` content type; `GET` plays it back (byte ranges supported), `DELETE` removes it or withdraws the request |
 | `POST /entries/{id}/audio/error` | `{error}` — a client reporting that it could not make the recording |
+| `POST /entries/{id}/translation` | ask for the article to be translated into `READROOM_LANGUAGE`; the entry's `translation` is then `queued`, later `ready` or `failed` |
+| `GET /translations/pending` | work queue for a translating client — see below; `limit`, `exclude` |
+| `PUT /entries/{id}/translation` | `{of, pieces, title?, summary?, model?, language?}` — the translated pieces; `GET` returns the translation (`language`, `model`, `title`, `summary`, `content`), `DELETE` removes it or withdraws the request |
+| `POST /entries/{id}/translation/error` | `{error}` — a client reporting that it could not translate the article |
 | `POST /entries/{id}/preserve` | keep a local copy of this one article |
 | `DELETE /entries/{id}/preserve` | delete that local copy (text and images) and return the article; it is not fetched again unless asked for |
 | `POST /entries/mark-read` | optional `{feed_id}` or `{category}`; `{through: id}` limits it to that article and those below it (older ones, or with `order: "arrival"` those that arrived earlier); returns `{marked, ids}` |
@@ -206,7 +218,7 @@ A `-cmd` command gets the instructions and the article on standard input and pri
 article is untrusted text: use a command that can only write text, not one that can act on what it
 reads (`-backend claude` runs the claude CLI with its tools switched off for that reason).
 
-To have this done all the time, see [the worker](#the-worker-summaries-and-listening).
+To have this done all the time, see [the worker](#the-worker-summaries-listening-and-translation).
 
 ## Listening
 
@@ -255,12 +267,57 @@ dates and money sensibly and makes about 13 minutes of speech in 10 seconds on a
 with [uv](https://docs.astral.sh/uv/), which installs what it needs, and downloads the model (27 MB)
 on first use. English only.
 
-To have this done all the time, see [the worker](#the-worker-summaries-and-listening).
+To have this done all the time, see [the worker](#the-worker-summaries-listening-and-translation).
+
+## Translation
+
+Tell the server your own language — `READROOM_LANGUAGE=pl` — and every article gains a **Translate**
+button. Pressing it asks for that one article in your language; the article shows that the translation
+is in progress and, when it has arrived, opens in it from then on, with the original one tap away.
+Without the variable nothing about translation appears anywhere. The codes it accepts:
+`bg cs da de el en es et fi fr hr hu it ja ko lt lv nb nl pl pt ro sk sl sr sv tr uk zh`.
+
+As with summaries and recordings the server translates nothing itself. `GET /api/v1/translations/pending`
+returns the articles waiting, oldest request first, each cut into **pieces**: runs of text as HTML, with
+their inline markup (links, emphasis) but none of the structure around them.
+
+```json
+{"entries": [{"id": 42, "language": "pl", "language_name": "Polish", "of": "3f9c0a1b77d2",
+              "title": "…", "summary": "…",
+              "pieces": ["First <a href=\"…\">paragraph</a>.", "A heading", "A list item", "…"]}],
+ "remaining": 1, "language": "pl", "language_name": "Polish"}
+```
+
+Send them back translated, in the same order, with `PUT /api/v1/entries/42/translation`:
+
+```json
+{"of": "3f9c0a1b77d2", "model": "qwen3.6", "title": "…", "summary": "…",
+ "pieces": ["Pierwszy <a href=\"…\">akapit</a>.", "Nagłówek", "Element listy", "…"]}
+```
+
+The server puts each piece where the original was, so paragraphs, lists, images and code listings stay
+exactly as they are, and cleans what it is given like any other HTML from outside. `of` names the text
+the pieces were cut from: if the article has changed since, the answer is `409` and it should be taken
+from the queue again; the wrong number of pieces is `422`. A piece sent back empty keeps its original.
+If it cannot be done, `POST /api/v1/entries/42/translation/error` with `{"error": "…"}` shows the reason
+on the article, where "Try again" queues it once more.
+
+`readroom translate` is an ordinary client of that queue, with the same choice of model as
+`readroom summarize`:
+
+```sh
+readroom translate -llm http://127.0.0.1:8080/v1 -model qwen3.6-fast
+readroom translate -backend claude
+```
+
+It sends the pieces to the model a dozen at a time, so that it sees some context and a long article
+does not have to fit in one answer, and asks again piece by piece when an answer comes back jumbled. To
+have this done all the time, add `[translations]` to [the worker](#the-worker-summaries-listening-and-translation).
 
 ## Layout
 
 ```
-cmd/readroom        entry point: serve, worker, summarize, speak
+cmd/readroom        entry point: serve, worker, summarize, translate, speak
 internal/store      SQLite schema and queries
 internal/fetch      feed polling, article preservation
 internal/export     EPUB and Markdown

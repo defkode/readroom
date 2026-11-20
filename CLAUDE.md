@@ -69,11 +69,20 @@ with their "AI summary" setting. See SPEC §4.
 
 ## The worker
 
-`readroom worker` runs both client jobs — summaries (above) and listening (below) — on the owner's desktop:
+`readroom worker` runs the client jobs — summaries (above), translation and listening (below) — on the owner's desktop:
 one systemd user service (`readroom-worker.service`, written by `readroom worker install`), set up in
 `~/.config/readroom/worker.toml`. After changing anything in `cmd/readroom`, run `make install`,
 which puts this checkout's binary in `~/.local/bin` and restarts the worker. `readroom worker check` tries every part; `journalctl --user -u readroom-worker`
 shows what it did. See SPEC §4.
+
+## Translation
+
+Optional: `READROOM_LANGUAGE=pl` on the server turns it on; without it nothing about translation shows.
+Same shape again — the Translate button in an article queues it, `readroom translate` (or the worker's
+`[translations]` section, or any client) reads `GET /api/v1/translations/pending` and writes back with
+`PUT /api/v1/entries/{id}/translation`. The article travels as *pieces* (runs of inline HTML) that the
+server cuts and reassembles in `internal/htmlx` — `Pieces` and `ReplacePieces` must stay in step, since
+a translation is matched to its text only by their count and order. See SPEC §4.
 
 ## Listening
 

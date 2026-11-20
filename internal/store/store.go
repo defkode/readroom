@@ -182,6 +182,22 @@ ALTER TABLE entries ADD COLUMN position REAL NOT NULL DEFAULT 0;
 ALTER TABLE entries ADD COLUMN position_at TEXT;
 CREATE INDEX entries_reading ON entries (position_at DESC) WHERE position > 0;
 `,
+	`
+-- Translations of articles into the owner's language, asked for one at a time and made
+-- by a client outside the server, like the spoken versions. A row without created_at is
+-- a request still waiting. One per article: asking in another language replaces it.
+CREATE TABLE entry_translations (
+	entry_id     INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+	language     TEXT NOT NULL,            -- what it is, or is to be, translated into: "pl"
+	requested_at TEXT NOT NULL,
+	created_at   TEXT,                     -- when the translation arrived; NULL while waiting
+	model        TEXT NOT NULL DEFAULT '', -- what translated it, as the client names itself
+	error        TEXT NOT NULL DEFAULT '', -- why the last attempt failed, if it did
+	title        TEXT NOT NULL DEFAULT '',
+	summary      TEXT NOT NULL DEFAULT '', -- the AI summary, if there was one to translate
+	content      TEXT NOT NULL DEFAULT ''  -- the article's HTML with its text translated
+);
+`,
 }
 
 func Open(path string) (*Store, error) {

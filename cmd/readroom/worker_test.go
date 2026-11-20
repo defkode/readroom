@@ -57,7 +57,7 @@ every = "30s"
 	if plan.speech != nil {
 		t.Error("speech should be off without its section")
 	}
-	if _, label, _ := plan.summaries.asker(nil); label != "my-llm" {
+	if _, label, _ := plan.summaries.asker(nil, 0); label != "my-llm" {
 		t.Errorf("label = %q", label)
 	}
 	if plan.summariesWait != 30*time.Second {
@@ -209,5 +209,56 @@ func TestUnitText(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit lacks %s:\n%s", want, unit)
 		}
+	}
+}
+
+func TestParseBatch(t *testing.T) {
+	got, ok := parseBatch("Here you go:\n<1>Jeden</1>\n<2>Dwa <a href=\"/x\">trzy</a></2>", 2)
+	if !ok || got[0] != "Jeden" || got[1] != `Dwa <a href="/x">trzy</a>` {
+		t.Errorf("parsed %q, %v", got, ok)
+	}
+	for name, answer := range map[string]string{
+		"one missing":  "<1>Jeden</1>",
+		"one twice":    "<1>Jeden</1><1>Jeden</1><2>Dwa</2>",
+		"one empty":    "<1>Jeden</1><2> </2>",
+		"out of range": "<1>Jeden</1><3>Trzy</3>",
+	} {
+		if _, ok := parseBatch(answer, 2); ok {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// Pieces go to the model a few at a time; an answer that cannot be taken apart
+// is asked for again piece by piece.
+func TestTranslatePieces(t *testing.T) {
+	pieces := []string{"one", "two", strings.Repeat("long ", 600), "four", "five"}
+	calls := 0
+	ask := func(_ context.Context, instructions, text string) (string, error) {
+		calls++
+		if !strings.Contains(instructions, "into Polish") {
+			t.Errorf("instructions do not name the language: %s", instructions)
+		}
+		if strings.HasPrefix(text, "<1>") {
+			if strings.Contains(text, "four") {
+				return "I would rather not use tags.", nil
+			}
+			return numbered.ReplaceAllString(text, "<$1>PL $2</$3>"), nil
+		}
+		return "PL " + text, nil
+	}
+	got, err := translatePieces(context.Background(), ask, "Polish", pieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range pieces {
+		if got[i] != "PL "+strings.TrimSpace(p) && got[i] != "PL "+p {
+			t.Errorf("piece %d = %.40q", i, got[i])
+		}
+	}
+	// "one" and "two" as a batch; the long piece by itself, as it fits with nothing;
+	// "four" and "five" as a batch whose answer is refused, so each is asked for again.
+	if calls != 5 {
+		t.Errorf("model asked %d times", calls)
 	}
 }

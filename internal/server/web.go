@@ -533,6 +533,22 @@ type entryPage struct {
 	// On paper only: a QR code of the original's address, and a short name for the file a print is saved as.
 	QR        template.HTML
 	PrintName string
+
+	// What is shown: the article's own title and text, or their translation.
+	Title string
+	Body  string
+	// Language is the owner's language by name ("Polish"); empty when none is set,
+	// and then nothing offers a translation.
+	Language    string
+	Translation translationView
+}
+
+// translationView is what the article page says about the article's translation.
+type translationView struct {
+	Language string // the language it is in, or is being made in, by name
+	Code     string // the same as a code, for the lang attribute: "pl"
+	Model    string
+	Shown    bool // the page shows the translation rather than the original
 }
 
 // listsSheet is the readlists sheet's data: every list, and for an article which hold it.
@@ -576,6 +592,26 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead, Lists: listsSheet{EntryID: e.ID}}
 	page.PrintName = printName(e)
+	page.Title, page.Body = e.Title, e.Body()
+	if s.Language != "" {
+		page.Language = languageName(s.Language)
+	}
+	if e.Translation != "" {
+		page.Translation = translationView{Language: languageName(e.TranslationLanguage), Code: e.TranslationLanguage, Model: e.TranslationModel}
+	}
+	// A translation that has arrived is what the article opens in; the original is one tap away.
+	if e.Translation == store.TranslationReady && r.URL.Query().Get("original") == "" {
+		if t, err := s.Store.Translation(ctx, id); err == nil {
+			page.Translation.Shown = true
+			page.Body = t.Content
+			if t.Title != "" {
+				page.Title = t.Title
+			}
+			if t.Summary != "" {
+				page.Paragraph = paragraphs(t.Summary)
+			}
+		}
+	}
 	if e.URL != "" {
 		page.QR = qrSVG(e.URL)
 	}

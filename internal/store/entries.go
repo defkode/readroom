@@ -40,6 +40,7 @@ type Entry struct {
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
 	Audio          string  `json:"audio"`       // spoken version: "" (none), "queued", "ready" or "failed"
+	Translation    string  `json:"translation"` // translation into the owner's language: "" (none), "queued", "ready" or "failed"
 	Saved          bool    `json:"saved"`       // saved by address rather than brought by a feed; feed_title is then its site
 	Position       float64 `json:"position"`    // how far it has been read, as a share of its text: 0 not begun, 1 finished
 	PositionAt     *string `json:"position_at"` // when a reader last reported that
@@ -52,6 +53,11 @@ type Entry struct {
 	AudioVoice       string  `json:"audio_voice,omitempty"` // what read it, as the client named itself
 	AudioAt          string  `json:"audio_at,omitempty"`    // when the recording arrived
 	AudioError       string  `json:"audio_error,omitempty"`
+	// The translation itself is at /entries/{id}/translation.
+	TranslationLanguage string `json:"translation_language,omitempty"` // "pl"
+	TranslationModel    string `json:"translation_model,omitempty"`    // what translated it, as the client named itself
+	TranslationAt       string `json:"translation_at,omitempty"`       // when it arrived
+	TranslationError    string `json:"translation_error,omitempty"`
 }
 
 // Body is the best HTML available: the preserved copy, else the feed's content.
@@ -66,15 +72,21 @@ const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
 e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
-e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), f.kind = 'saved', e.position, e.position_at, e.created_at`
+e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), coalesce((` + translationState + `), ''), f.kind = 'saved', e.position, e.position_at, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
 		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
-		&e.PreserveError, &e.Audio, &e.Saved, &e.Position, &e.PositionAt, &e.CreatedAt}
+		&e.PreserveError, &e.Audio, &e.Translation, &e.Saved, &e.Position, &e.PositionAt, &e.CreatedAt}
 	if len(extra) > 0 {
+		// Any extra asks for the bodies; a *string among them takes one more column after those.
 		dest = append(dest, &e.Content, &e.PreservedContent)
+		for _, x := range extra {
+			if more, ok := x.(*string); ok {
+				dest = append(dest, more)
+			}
+		}
 	}
 	if err := r.Scan(dest...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -286,6 +298,16 @@ FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_i
 		}
 		if at != nil {
 			e.AudioAt = *at
+		}
+	}
+	if e.Translation != "" {
+		var at *string
+		if err := s.db.QueryRowContext(ctx, `SELECT language, model, created_at, error FROM entry_translations WHERE entry_id = ?`, id).
+			Scan(&e.TranslationLanguage, &e.TranslationModel, &at, &e.TranslationError); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if at != nil {
+			e.TranslationAt = *at
 		}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT readlist_id FROM readlist_entries WHERE entry_id = ?`, id)
@@ -764,6 +786,11 @@ func (s *Store) SavePreserved(ctx context.Context, id int64, html string, assets
 	if _, err := tx.ExecContext(ctx, `UPDATE entry_bodies SET preserved_content = ? WHERE entry_id = ?`, html, id); err != nil {
 		return err
 	}
+	// A translation made of the feed's text is not one of this fuller copy. A request
+	// still waiting stays: the copy is what it was waiting for.
+	if _, err := tx.ExecContext(ctx, staleTranslation, id); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE entries SET preserved_at = ?, preserve_requested = 0, preserve_error = '',
        text_length = ?, image = CASE WHEN image != '' AND ? != '' THEN ? ELSE image END
@@ -796,6 +823,7 @@ func (s *Store) RemovePreserved(ctx context.Context, id int64) error {
 	for _, q := range []string{
 		`UPDATE entry_bodies SET preserved_content = NULL WHERE entry_id = ?`,
 		`DELETE FROM entry_assets WHERE entry_id = ?`,
+		staleTranslation, // it was of the copy, and shows the copy's images
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return err

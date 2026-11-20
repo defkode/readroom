@@ -50,6 +50,8 @@ services:
       # the container is root-only on the share, and File Station cannot open it.
       - READROOM_TOKEN=CHANGE_ME
       - READROOM_INTERVAL=30m
+      # Optional: your own language, to have articles translated into it on request.
+      # - READROOM_LANGUAGE=pl
     volumes:
       - /share/Container/readroom:/data
     restart: always

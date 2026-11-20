@@ -13,7 +13,7 @@
   {{with .Entry}}
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
-    <h1>{{if .Title}}{{.Title}}{{else}}Untitled{{end}}</h1>
+    <h1{{if $.Page.Translation.Shown}} lang="{{$.Page.Translation.Code}}"{{end}}>{{if $.Page.Title}}{{$.Page.Title}}{{else}}Untitled{{end}}</h1>
     <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .ReadingMinutes}} · {{.ReadingMinutes}} min read{{end}}{{if .Preserved}} · saved locally{{end}}</p>
     <p class="status">
       {{if not $.Page.FirstRead}}<span class="read" title="{{if .ReadAt}}Read on {{date (deref .ReadAt)}}{{else}}Read before reading times were recorded{{end}}">{{icon "check"}}{{readWhen .ReadAt}}</span>{{end}}
@@ -21,6 +21,7 @@
       <button data-action="mark-unread" data-id="{{.ID}}">Mark as unread</button>
       {{if .Hidden}}<button data-action="unhide-entry" data-id="{{.ID}}">Show again</button>
       {{else}}<button data-action="hide-entry" data-id="{{.ID}}" title="Keep this article out of every list">Hide</button>{{end}}
+      {{if and $.Page.Language (not .Translation)}}<button data-action="request-translation" data-id="{{.ID}}" title="Translate this article into {{$.Page.Language}}">Translate</button>{{end}}
       {{if .PreserveError}}<span class="err">Local copy failed: {{.PreserveError}}</span>{{end}}
     </p>
   </header>
@@ -57,15 +58,33 @@
     {{end}}
     {{end}}
   </section>
+  {{/* The translation into the owner's language; swapped in again by the script like the part above. */}}
+  <section class="audio" id="translation" data-state="{{.Entry.Translation}}"{{if not .Entry.Translation}} hidden{{end}}>
+    {{with .Entry}}
+    {{if eq .Translation "ready"}}
+    <p>{{icon "globe"}}<span>{{if $.Page.Translation.Shown}}Translated into {{$.Page.Translation.Language}}{{if .TranslationModel}} by {{.TranslationModel}}{{end}}{{else}}This is the original. <small>A translation into {{$.Page.Translation.Language}} is ready.</small>{{end}}</span>
+      {{if $.Page.Translation.Shown}}<button data-action="show-version" data-href="/entries/{{.ID}}?original=1">Show original</button>
+      {{else}}<button class="play" data-action="show-version" data-href="/entries/{{.ID}}">Show translation</button>{{end}}
+      <button data-action="delete-translation" data-id="{{.ID}}" data-confirm>Remove</button></p>
+    {{else if eq .Translation "failed"}}
+    <p>{{icon "globe"}}<span>Could not be translated: {{.TranslationError}}</span>
+      <button data-action="request-translation" data-id="{{.ID}}">Try again</button>
+      <button data-action="delete-translation" data-id="{{.ID}}">Dismiss</button></p>
+    {{else if .Translation}}
+    <p>{{icon "globe"}}<span><b class="pulse"></b>Translating into {{$.Page.Translation.Language}}… <small>It appears here as soon as it has been made.</small></span>
+      <button data-action="delete-translation" data-id="{{.ID}}">Cancel</button></p>
+    {{end}}
+    {{end}}
+  </section>
   {{if .Paragraph}}
   {{/* Folds away for those who would rather read the article first; remembered per device. */}}
   <details class="summary" open data-fold="summary">
     <summary><h2>{{icon "ai"}}AI summary{{if .Entry.SummaryModel}} <small>{{.Entry.SummaryModel}}</small>{{end}}</h2>{{icon "chevron"}}</summary>
-    {{range .Paragraph}}<p>{{.}}</p>{{end}}
+    {{range .Paragraph}}<p{{if $.Page.Translation.Shown}} lang="{{$.Page.Translation.Code}}"{{end}}>{{.}}</p>{{end}}
   </details>
   <script src="{{static "folds.js"}}"></script>
   {{end}}
-  <div class="content">{{html .Entry.Body}}</div>
+  <div class="content"{{if .Translation.Shown}} lang="{{.Translation.Code}}"{{end}}>{{html .Body}}</div>
   {{/* Printed, the article ends with the way back to its original. */}}
   {{if .Entry.URL}}<footer class="source print-only">{{.QR}}<p><b>Original</b>{{.Entry.URL}}</p></footer>{{end}}
   {{/* Filled in by the script from the list this article was opened from. */}}

@@ -45,7 +45,7 @@ One static Go binary and one SQLite file.
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
 | UI | server-rendered `html/template` + small vanilla scripts (`app.js` drives a page, `player.js` the player and in-place page changes, `prefs.js`, `folds.js`, `transitions.js`) | no build step, no vendored framework; the script is a client of the same REST API |
 
-Packages: `cmd/readroom` (entry point: `serve`, `worker`, `summarize`, `speak`), `internal/store` (schema, queries),
+Packages: `cmd/readroom` (entry point: `serve`, `worker`, `summarize`, `translate`, `speak`), `internal/store` (schema, queries),
 `internal/fetch` (polling, preservation), `internal/export` (EPUB, Markdown), `internal/htmlx` (HTML
 helpers, excerpts), `internal/server` (API, web app, embedded templates and static files).
 
@@ -78,6 +78,9 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
 - **entry_audio** — at most one row per entry: a request to have it read aloud (`requested_at`) and,
   once made, the recording as a blob (`data`, `mime`, `voice`, `created_at`), or why it failed (`error`).
+- **entry_translations** — at most one row per entry: a request to have it translated (`language`,
+  `requested_at`) and, once made, the translation (`title`, `summary`, `content` as HTML, `model`,
+  `created_at`), or why it failed (`error`).
 
 Entries are not deleted when they drop out of a feed, only when they expire (see Retention). Unsubscribing from a
 feed deletes its entries and any images no other entry uses. Timestamps are UTC text (`2006-01-02T15:04:05Z`), sortable as strings.
@@ -261,22 +264,60 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   far faster than real time on a CPU. It splits paragraphs into sentences, the unit the model reads.
 - **Schedule:** the worker (below) checks the queue every minute on the owner's desktop.
 
+### Translation
+
+- Optional, and off unless the server is told the owner's language: `READROOM_LANGUAGE=pl`. Without it
+  the app shows nothing about translation and the API refuses a request for one (`422`).
+- An article is translated **only when asked**: the Translate button under its title. Nothing is
+  translated for a feed as a whole.
+- The server never calls a model. Asking puts the article in a queue; a client outside takes it from
+  there, translates it however it likes, and sends it back.
+- Under the title the article shows where that stands: "Translating into Polish…" with Cancel (the
+  page asks every 5 seconds while it is open); the reason it failed, with Try again; or, once made,
+  which version is on the page and a button for the other, with Remove.
+- **An article that has a translation opens in it** — title, AI summary and text — marked with the
+  language (`lang`), and `?original=1` shows the original. When a translation arrives while the article
+  is open, the text being read is left alone and the notice offers the translation. Switching replaces
+  the page in the history, so Back still leads to the list.
+- **Queue:** `GET /api/v1/translations/pending` returns the requested articles, oldest request first,
+  each as its title, its AI summary and its text cut into **pieces**: every run of text with its inline
+  markup (links, emphasis, inline code), in order. The blocks around them — paragraphs, headings, lists,
+  figures, tables — are not sent, and code listings and embedded media are left out altogether. Hidden
+  articles are skipped, and one whose full local copy is on its way waits for it.
+- `PUT /api/v1/entries/{id}/translation` takes the pieces back translated, in the same order, and puts
+  each where the original run was; the result is sanitised like a feed's HTML and stored whole. `of`,
+  handed out with the pieces, names the text they were cut from: a mismatch is `409`, the wrong number
+  of pieces `422`. A blank piece keeps its original. `POST …/translation/error` records a failure,
+  `GET` returns the translation, `DELETE` removes it or withdraws the request.
+- One translation per article. Asking again leaves a finished one alone unless the server's language
+  has changed since, in which case it is made anew.
+- A finished translation is removed when the article's text is replaced — a local copy kept or
+  removed — since it would no longer say what the article says. It is otherwise kept as long as the
+  article: text is small, unlike speech.
+- `readroom translate` is the reference client, with the same choice of model as `readroom summarize`.
+  It sends the title, the summary and the pieces to the model up to 12 at a time (about 2,500
+  characters), each in a numbered tag, and takes the answer apart by those tags; an answer it cannot
+  take apart is asked for again one piece at a time. A model out of reach stops the run and leaves the
+  article queued; a model that answers with nothing is reported on the article.
+- **Schedule:** the worker (below) checks the queue every minute, when it has a `[translations]` section.
+
 ### The worker
 
 - `readroom worker` is the client side in one piece: one process on a computer that has the models,
   keeping both queues empty, set up by one file (`~/.config/readroom/worker.toml`: the server, its
-  token or a file holding it, a `[summaries]` section, a `[speech]` section). A section left out is
-  work left to someone else. It adds nothing to the API and does nothing `summarize` and `speak` do
-  not; those stay for single runs and scripts.
+  token or a file holding it, and a section each for `[summaries]`, `[translations]` and `[speech]`). A section left out is
+  work left to someone else. It adds nothing to the API and does nothing `summarize`, `translate` and
+  `speak` do not; those stay for single runs and scripts.
 - A model is reached in one of two general ways, so no engine needs code of its own: an
   OpenAI-compatible address (Ollama, llama.cpp, LM Studio, hosted services) or a command from standard
   input to standard output (summaries and speech alike). The `claude` backend is the one exception,
   kept because it switches the CLI's tools off.
 - Each queue has its own loop: work until it is empty, wait `every` (5 minutes for summaries, 1 for
-  speech, where somebody is waiting), again. A failure — server out of reach, model not started — is
+  translations and speech, where somebody is waiting), again. A failure — server out of reach, model not started — is
   logged once, retried at the same pace, and its end is logged too.
-- `worker init` writes a commented file; `worker check` tries the server and token, one sample summary
-  and one sample sentence of speech, and writes nothing to the server; `worker install` writes and
+- `worker init` writes a commented file; `worker check` tries the server and token, one sample summary,
+  one sample translation (which must keep its link) and one sample sentence of speech, and writes
+  nothing to the server; `worker install` writes and
   starts a systemd user service (with the installing shell's `PATH`, which a user service otherwise
   lacks) and stops the two timers that did this work before; `worker uninstall` removes it.
 - An unknown setting in the file is an error, not ignored: a mistyped name would otherwise silently
@@ -380,6 +421,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | `READROOM_TOKEN_FILE` | none | read the token from a file; a random one is generated there on first run |
 | `READROOM_INTERVAL` | `30m` | polling interval |
 | `READROOM_SUMMARY_MIN_CHARS` | `1500` | shortest article queued for an AI summary |
+| `READROOM_LANGUAGE` | *(none)* | the owner's language as a code (`pl`); turns translation on |
 | `READROOM_LOG` | `info` | `debug` logs every request |
 
 ## 7. Deployment
@@ -438,6 +480,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
 | Article text lives in its own table, and the Unread indexes hold unread rows only | every list had to step over each article's HTML to read its flags; and over time nearly everything is read, so an index of what is not stays small |
 | Articles are read aloud on request only, by a client outside the server, through a queue like the summaries' | speech for every article would be made mostly for nothing; and the NAS is too small for a model, while the desktop makes 13 minutes of speech in 10 seconds |
+| Translation is on request, per article, through a queue like listening's | the owner reads English and wants the odd article in Polish; translating everything would occupy the desktop's model for hours to make text mostly never opened |
+| The owner's language is a server setting (`READROOM_LANGUAGE`), not a per-device preference or a parameter of each request | it is one fact about the owner, set once like the token; the queue then tells any client what to translate into, so clients need no language setting of their own |
+| An article is handed out as pieces of inline HTML and put back together by the server | a model given a whole page of HTML loses images, breaks nesting and runs out of room on a long article; pieces keep the structure out of its hands, can be done a few at a time by a small local model, and make "as many back as went out" a check any client can be held to |
+| Pieces carry their inline markup rather than plain text | a link or an emphasis moves within a sentence when it is translated; only the translator knows where it belongs |
+| A translated article opens in the translation, and a translation that arrives mid-reading does not replace the text | it was asked for in order to be read; but swapping the words under someone's eyes would lose their place |
 | The audio API takes any audio file and knows nothing about what made it; `readroom speak` runs any command from text to audio | text-to-speech models change quickly — the first one used, tiny-voca, was days old — and replacing one must not touch the server |
 | Speech is synthesised on the desktop rather than in the browser | tiny-voca's browser build needs a Python runtime in WebAssembly for its phonemizer, about 50 MB to embed and to download, and playback would stop with the phone's screen; a stored file plays like any other audio |
 | Recordings live in the database and are deleted after 30 days | the collection stays one file; speech is large (about 0.36 MB a minute) and listened to once, and can be made again in seconds |
@@ -480,6 +527,12 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
   waits (up to 30 days).
 - The bundled text-to-speech script is English only, and mispronounces some names and unusual words.
+- Translations are made only while the owner's desktop is on, like summaries, and take a local model
+  about a minute for a short article.
+- Only the article page is translated: lists, search, exports (EPUB, Markdown), print's file name and
+  the spoken version all use the original. Text that sits directly beside block elements in unusual
+  markup is translated as its own piece, without the context of its neighbours.
+- A translation is as good as the model that made it; nothing checks it beyond its shape.
 - A recording is read into memory whole to be served (a few MB each); fine for one listener.
 - EPUB output is checked structurally (well-formed XML, correct container) but has not been opened on
   a reMarkable.

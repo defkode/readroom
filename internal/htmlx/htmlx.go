@@ -270,3 +270,145 @@ func text(s string, skip map[string]bool) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// ---- pieces for translation --------------------------------------------------
+//
+// An article is translated piece by piece: each piece is a run of text with its
+// inline markup (links, emphasis), and the blocks around the pieces — paragraphs,
+// lists, figures, code listings — stay exactly as they are. That keeps the
+// structure and the images out of a translator's hands, and lets a long article
+// be done a few pieces at a time.
+
+// pieceBlock is what separates one piece from the next.
+var pieceBlock = map[string]bool{
+	"p": true, "div": true, "section": true, "article": true, "aside": true, "header": true, "footer": true,
+	"main": true, "nav": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"ul": true, "ol": true, "li": true, "dl": true, "dt": true, "dd": true, "blockquote": true, "figure": true,
+	"figcaption": true, "table": true, "thead": true, "tbody": true, "tfoot": true, "tr": true, "td": true,
+	"th": true, "caption": true, "hr": true, "details": true, "summary": true, "address": true, "form": true,
+}
+
+// pieceSkip is never translated, nor anything inside it.
+var pieceSkip = map[string]bool{
+	"pre": true, "script": true, "style": true, "svg": true, "math": true, "iframe": true, "video": true,
+	"audio": true, "object": true, "template": true,
+}
+
+// pieceVerbatim is inline text that is not language: a piece made of nothing else is left alone.
+var pieceVerbatim = map[string]bool{"code": true, "kbd": true, "samp": true, "var": true}
+
+func hasBlock(n *html.Node) bool {
+	if n.Type != html.ElementNode {
+		return false
+	}
+	if pieceBlock[n.Data] || pieceSkip[n.Data] {
+		return true
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if hasBlock(c) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLetters(n *html.Node) bool {
+	if n.Type == html.TextNode {
+		return strings.IndexFunc(n.Data, unicode.IsLetter) >= 0
+	}
+	if n.Type == html.ElementNode && pieceVerbatim[n.Data] {
+		return false
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if hasLetters(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// pieceRuns collects, in document order, every run of sibling inline nodes under
+// parent that holds something to translate.
+func pieceRuns(parent *html.Node, out *[][]*html.Node) {
+	var run []*html.Node
+	flush := func() {
+		for _, n := range run {
+			if hasLetters(n) {
+				*out = append(*out, run)
+				break
+			}
+		}
+		run = nil
+	}
+	for c := parent.FirstChild; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == html.TextNode, c.Type == html.ElementNode && !hasBlock(c):
+			run = append(run, c)
+		default:
+			flush()
+			if c.Type == html.ElementNode && !pieceSkip[c.Data] {
+				pieceRuns(c, out)
+			}
+		}
+	}
+	flush()
+}
+
+func pieceTree(content string) (*html.Node, [][]*html.Node, error) {
+	nodes, err := ParseFragment(content)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
+	for _, n := range nodes {
+		root.AppendChild(n)
+	}
+	var runs [][]*html.Node
+	pieceRuns(root, &runs)
+	return root, runs, nil
+}
+
+// Pieces returns what there is to translate in an HTML fragment, in order: each
+// piece is a run of text as HTML, with its inline markup.
+func Pieces(content string) []string {
+	_, runs, err := pieceTree(content)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, len(runs))
+	for i, run := range runs {
+		out[i] = strings.TrimSpace(Render(run))
+	}
+	return out
+}
+
+// ReplacePieces returns content with each piece replaced by its translation, and
+// false when there are not exactly as many translations as Pieces(content). A
+// blank translation leaves that piece as it was.
+func ReplacePieces(content string, translated []string) (string, bool) {
+	root, runs, err := pieceTree(content)
+	if err != nil || len(runs) != len(translated) {
+		return "", false
+	}
+	for i, run := range runs {
+		if strings.TrimSpace(translated[i]) == "" {
+			continue
+		}
+		fresh, err := ParseFragment(translated[i])
+		if err != nil {
+			continue
+		}
+		parent := run[0].Parent
+		for _, n := range fresh {
+			parent.InsertBefore(n, run[0])
+		}
+		for _, n := range run {
+			parent.RemoveChild(n)
+		}
+	}
+	var kids []*html.Node
+	for c := root.FirstChild; c != nil; c = c.NextSibling {
+		kids = append(kids, c)
+	}
+	return Render(kids), true
+}

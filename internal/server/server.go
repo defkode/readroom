@@ -37,6 +37,10 @@ type Server struct {
 	// SummaryMinChars is the shortest article text worth an AI summary.
 	SummaryMinChars int
 
+	// Language is the owner's own language, a key of Languages such as "pl": what
+	// articles can be translated into. Empty turns translation off altogether.
+	Language string
+
 	pages map[string]*template.Template
 }
 
@@ -86,6 +90,12 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/v1/entries/{id}/audio", s.apiDeleteAudio)
 	api.HandleFunc("POST /api/v1/entries/{id}/audio/error", s.apiAudioFailed)
 	api.HandleFunc("GET /api/v1/audio/pending", s.apiPendingAudio)
+	api.HandleFunc("POST /api/v1/entries/{id}/translation", s.apiRequestTranslation)
+	api.HandleFunc("GET /api/v1/entries/{id}/translation", s.apiTranslation)
+	api.HandleFunc("PUT /api/v1/entries/{id}/translation", s.apiSetTranslation)
+	api.HandleFunc("DELETE /api/v1/entries/{id}/translation", s.apiDeleteTranslation)
+	api.HandleFunc("POST /api/v1/entries/{id}/translation/error", s.apiTranslationFailed)
+	api.HandleFunc("GET /api/v1/translations/pending", s.apiPendingTranslations)
 
 	api.HandleFunc("GET /api/v1/readlists", s.apiReadlists)
 	api.HandleFunc("POST /api/v1/readlists", s.apiCreateReadlist)

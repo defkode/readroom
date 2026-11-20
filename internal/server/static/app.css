@@ -367,6 +367,7 @@ body.reader .main { padding-bottom: calc(var(--safe-b) + 48px); }
 .article .audio .icon { flex: none; width: 16px; height: 16px; color: var(--accent); }
 .article .audio span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 .article .audio small { display: block; color: var(--muted); }
+#translation span { flex: 1 1 13em; } /* on a narrow screen the words keep the line and the buttons go under them */
 .article .audio button { padding: 5px 12px; border: 0; border-radius: 99px; background: var(--surface); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
 .article .audio button[disabled] { opacity: .5; }
 .article .audio button.play { min-width: 76px; background: var(--accent); color: var(--on-accent); }

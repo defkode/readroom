@@ -18,9 +18,9 @@ import (
 )
 
 // The worker is the client side of Readroom in one piece: on a computer that has
-// the models it keeps both queues empty — summaries and recordings — from one
-// configuration file. It does nothing the "summarize" and "speak" commands do
-// not; it only saves setting them up one by one.
+// the models it keeps the queues empty — summaries, translations and recordings —
+// from one configuration file. It does nothing the "summarize", "translate" and
+// "speak" commands do not; it only saves setting them up one by one.
 
 const workerUnit = "readroom-worker.service"
 
@@ -59,6 +59,14 @@ model = "llama3.2"
 
 # every = "5m"                    # how often the queue is checked
 
+# Translations of the articles you ask for, into the language the server is set to
+# (READROOM_LANGUAGE). The same settings as [summaries]; a model good at your
+# language matters more here than a fast one.
+# [translations]
+# api = "http://127.0.0.1:11434/v1"
+# model = "llama3.2"
+# every = "1m"
+
 [speech]
 # Any command that reads text on standard input and writes audio to standard
 # output. Whatever ffmpeg can read is encoded to MP3.
@@ -83,6 +91,15 @@ type workerConfig struct {
 		MaxChars int    `toml:"max_chars"`
 		Every    string `toml:"every"`
 	} `toml:"summaries"`
+	Translations *struct {
+		Backend string `toml:"backend"`
+		API     string `toml:"api"`
+		APIKey  string `toml:"api_key"`
+		Model   string `toml:"model"`
+		Command string `toml:"command"`
+		Label   string `toml:"label"`
+		Every   string `toml:"every"`
+	} `toml:"translations"`
 	Speech *struct {
 		Command string `toml:"command"`
 		Voice   string `toml:"voice"`
@@ -95,10 +112,12 @@ type workerConfig struct {
 // workerPlan is the configuration after it has been checked: what to run and how often.
 type workerPlan struct {
 	server, token string
-	summaries     *summaryOpts
-	speech        *speechOpts
-	summariesWait time.Duration
-	speechWait    time.Duration
+	summaries        *summaryOpts
+	translations     *translateOpts
+	speech           *speechOpts
+	summariesWait    time.Duration
+	translationsWait time.Duration
+	speechWait       time.Duration
 }
 
 func expandHome(path string) string {
@@ -152,16 +171,29 @@ func loadWorkerConfig(path string) (*workerPlan, error) {
 		p.token = os.Getenv("READROOM_TOKEN")
 	}
 	if s := cfg.Summaries; s != nil {
-		p.summaries = &summaryOpts{Backend: s.Backend, API: s.API, APIKey: s.APIKey, Model: s.Model,
-			Command: s.Command, Label: s.Label, MaxChars: s.MaxChars}
+		p.summaries = &summaryOpts{modelOpts: modelOpts{Backend: s.Backend, API: s.API, APIKey: s.APIKey, Model: s.Model,
+			Command: s.Command, Label: s.Label}, MaxChars: s.MaxChars}
 		if s.API != "" && s.Command != "" {
 			return nil, errors.New("[summaries]: set api or command, not both")
 		}
-		if _, _, err := p.summaries.asker(nil); err != nil {
+		if _, _, err := p.summaries.asker(nil, 0); err != nil {
 			return nil, fmt.Errorf("[summaries]: %w", err)
 		}
 		if p.summariesWait, err = parseEvery(s.Every, 5*time.Minute); err != nil {
 			return nil, fmt.Errorf("[summaries]: %w", err)
+		}
+	}
+	if s := cfg.Translations; s != nil {
+		p.translations = &translateOpts{modelOpts: modelOpts{Backend: s.Backend, API: s.API, APIKey: s.APIKey, Model: s.Model,
+			Command: s.Command, Label: s.Label}}
+		if s.API != "" && s.Command != "" {
+			return nil, errors.New("[translations]: set api or command, not both")
+		}
+		if _, _, err := p.translations.asker(nil, 0); err != nil {
+			return nil, fmt.Errorf("[translations]: %w", err)
+		}
+		if p.translationsWait, err = parseEvery(s.Every, time.Minute); err != nil {
+			return nil, fmt.Errorf("[translations]: %w", err)
 		}
 	}
 	if s := cfg.Speech; s != nil {
@@ -173,8 +205,8 @@ func loadWorkerConfig(path string) (*workerPlan, error) {
 			return nil, fmt.Errorf("[speech]: %w", err)
 		}
 	}
-	if p.summaries == nil && p.speech == nil {
-		return nil, fmt.Errorf("%s: neither [summaries] nor [speech] is there, so there is nothing to do", path)
+	if p.summaries == nil && p.translations == nil && p.speech == nil {
+		return nil, fmt.Errorf("%s: none of [summaries], [translations] and [speech] is there, so there is nothing to do", path)
 	}
 	return p, nil
 }
@@ -278,6 +310,13 @@ func workerRun(plan *workerPlan, once bool) error {
 			return done+skipped > 0, err
 		})
 	}
+	if o := plan.translations; o != nil {
+		logf := func(format string, a ...any) { printf("translations: "+format, a...) }
+		start("translations", plan.translationsWait, func(ctx context.Context) (bool, error) {
+			done, failed, err := runTranslations(ctx, c, *o, logf)
+			return done+failed > 0, err
+		})
+	}
 	if o := plan.speech; o != nil {
 		logf := func(format string, a ...any) { printf("speech: "+format, a...) }
 		start("speech", plan.speechWait, func(ctx context.Context) (bool, error) {
@@ -334,10 +373,10 @@ func workerCheck(plan *workerPlan) error {
 	report := func(name string, err error, ok string) {
 		if err != nil {
 			bad++
-			fmt.Printf("FAIL  %-10s %v\n", name, err)
+			fmt.Printf("FAIL  %-12s %v\n", name, err)
 			return
 		}
-		fmt.Printf("ok    %-10s %s\n", name, ok)
+		fmt.Printf("ok    %-12s %s\n", name, ok)
 	}
 
 	var queue struct {
@@ -348,15 +387,41 @@ func workerCheck(plan *workerPlan) error {
 	report("server", err, fmt.Sprintf("%s answers and accepts the token", plan.server))
 
 	if o := plan.summaries; o != nil {
-		ask, label, _ := o.asker(c.http)
+		ask, label, _ := o.asker(c.http, 1200)
 		start := time.Now()
-		summary, err := ask(ctx, checkSample)
+		summary, err := ask(ctx, systemPrompt, checkSample)
 		if err == nil && summary == "" {
 			err = errors.New("the model returned nothing")
 		}
 		report("summaries", err, fmt.Sprintf("%s in %.1fs: %s", label, time.Since(start).Seconds(), summary))
 	} else {
-		fmt.Printf("--    %-10s not configured\n", "summaries")
+		fmt.Printf("--    %-12s not configured\n", "summaries")
+	}
+
+	if o := plan.translations; o != nil {
+		// The language is the server's to say; the worker only learns it from the queue.
+		var queue struct {
+			Language string `json:"language_name"`
+		}
+		err := c.do(ctx, "GET", "/api/v1/translations/pending?limit=1", nil, &queue)
+		language := queue.Language
+		if err == nil && language == "" {
+			language = "Polish"
+			fmt.Printf("note  %-12s the server has no language set (READROOM_LANGUAGE), so nothing will be queued; trying %s\n", "translations", language)
+		}
+		var got []string
+		ask, label, _ := o.asker(c.http, 8000)
+		start := time.Now()
+		if err == nil {
+			got, err = translatePieces(ctx, ask, language, []string{"A lighthouse keeps its lamp",
+				`The harbour board <a href="/vote">voted on Tuesday</a> against replacing it with a modern beacon.`})
+		}
+		if err == nil && !strings.Contains(got[1], `<a href="/vote">`) {
+			err = fmt.Errorf("the model did not keep the markup: %s", got[1])
+		}
+		report("translations", err, fmt.Sprintf("%s into %s in %.1fs: %s", label, language, time.Since(start).Seconds(), strings.Join(got, " / ")))
+	} else {
+		fmt.Printf("--    %-12s not configured\n", "translations")
 	}
 
 	if o := plan.speech; o != nil {
@@ -379,7 +444,7 @@ func workerCheck(plan *workerPlan) error {
 		}
 		report("speech", err, fmt.Sprintf("%d kB of %s in %.1fs", len(audio)/1000, kind, time.Since(start).Seconds()))
 	} else {
-		fmt.Printf("--    %-10s not configured\n", "speech")
+		fmt.Printf("--    %-12s not configured\n", "speech")
 	}
 	if bad > 0 {
 		return fmt.Errorf("%d of the checks failed", bad)

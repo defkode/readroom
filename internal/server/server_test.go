@@ -77,7 +77,7 @@ type app struct {
 	url string
 }
 
-func newApp(t *testing.T) *app {
+func newApp(t *testing.T, set ...func(*Server)) *app {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +86,9 @@ func newApp(t *testing.T) *app {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := New(st, fetch.New(st, time.Hour, log), "secret", log)
 	server.SummaryMinChars = 600 // the test article is about 1,100 characters
+	for _, fn := range set {
+		fn(server)
+	}
 	srv := httptest.NewServer(server.Handler())
 	t.Cleanup(srv.Close)
 	return &app{t: t, url: srv.URL}

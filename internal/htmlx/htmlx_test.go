@@ -1,6 +1,9 @@
 package htmlx
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestExcerpt(t *testing.T) {
 	cases := []struct{ name, title, content, want string }{
@@ -49,5 +52,43 @@ func TestSpeech(t *testing.T) {
 	want := "A heading.\nFirst sentence. Second “one.”\nAn item.\nDone!\nThe end."
 	if got != want {
 		t.Errorf("Speech:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestPieces(t *testing.T) {
+	const article = `<h2>A title</h2>
+<p>First <a href="/x">linked</a> paragraph.</p>
+<figure><img src="/assets/abc" alt="x"><figcaption>The caption</figcaption></figure>
+<pre><code>do not touch()</code></pre>
+<ul><li>One <ul><li>Nested</li></ul></li><li><code>only_code</code></li></ul>
+<div>Loose text<br>second line</div>
+<blockquote><p>Quoted.</p></blockquote>`
+	got := Pieces(article)
+	want := []string{"A title", `First <a href="/x">linked</a> paragraph.`, "The caption", "One", "Nested",
+		"Loose text<br/>second line", "Quoted."}
+	if len(got) != len(want) {
+		t.Fatalf("pieces = %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("piece %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	out, ok := ReplacePieces(article, []string{"Tytuł", `Pierwszy <a href="/x">podlinkowany</a> akapit.`, "Podpis",
+		"Jeden", "Zagnieżdżony", "", "Cytat."})
+	if !ok {
+		t.Fatal("not replaced")
+	}
+	for _, s := range []string{`<h2>Tytuł</h2>`, `<p>Pierwszy <a href="/x">podlinkowany</a> akapit.</p>`,
+		`<img src="/assets/abc" alt="x"/><figcaption>Podpis</figcaption>`, `<pre><code>do not touch()</code></pre>`,
+		`<li>Jeden<ul><li>Zagnieżdżony</li></ul></li>`, `<li><code>only_code</code></li>`,
+		`<div>Loose text<br/>second line</div>`, `<blockquote><p>Cytat.</p></blockquote>`} {
+		if !strings.Contains(out, s) {
+			t.Errorf("translated article lacks %s:\n%s", s, out)
+		}
+	}
+	if _, ok := ReplacePieces(article, []string{"too", "few"}); ok {
+		t.Error("accepted the wrong number of pieces")
 	}
 }
