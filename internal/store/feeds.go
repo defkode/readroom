@@ -19,6 +19,9 @@ type Feed struct {
 	Preserve      bool    `json:"preserve"`       // keep a full local copy of new articles
 	PreserveSince *string `json:"preserve_since"` // only articles published at/after this; null = all
 	AISummary     bool    `json:"ai_summary"`     // queue this feed's longer articles for an AI summary
+	AICleanup     bool    `json:"ai_cleanup"`     // have a model read every article first: its language, and a copy without what is not the article
+	Held          int     `json:"held"`           // new articles waiting for that, and so not shown yet
+	Uncleaned     int     `json:"uncleaned"`      // all its articles still waiting for it, those already shown included
 	KeepDays      int     `json:"keep_days"`      // delete articles older than this many days; 0 = keep forever
 	ETag          string  `json:"-"`
 	LastModified  string  `json:"-"`
@@ -41,19 +44,21 @@ type Feed struct {
 
 const feedSelect = `
 SELECT f.id, f.url, f.site_url, f.feed_title, f.custom_title, f.category, f.preserve,
-       f.preserve_since, f.ai_summary, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
+       f.preserve_since, f.ai_summary, f.ai_cleanup, f.keep_days, f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.created_at,
        f.fail_count, f.failing_since, f.last_ok_at, f.initial_unread, f.teaser IS NOT NULL, coalesce(f.teaser, 0), f.kind = 'saved',
        (SELECT max(e.published_at) FROM entries e WHERE e.feed_id = f.id),
-       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL),
-       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL)
+       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.read = 0 AND e.hidden_at IS NULL AND e.held = 0),
+       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.hidden_at IS NULL AND e.held = 0),
+       (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.held = 1),
+       CASE WHEN f.ai_cleanup = 1 THEN (SELECT count(*) FROM entries e WHERE e.feed_id = f.id AND e.cleaned_at IS NULL AND e.cleanup_error = '' AND e.hidden_at IS NULL) ELSE 0 END
 FROM feeds f`
 
 func scanFeed(r interface{ Scan(...any) error }) (*Feed, error) {
 	var f Feed
 	err := r.Scan(&f.ID, &f.URL, &f.SiteURL, &f.FeedTitle, &f.CustomTitle, &f.Category, &f.Preserve,
-		&f.PreserveSince, &f.AISummary, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
+		&f.PreserveSince, &f.AISummary, &f.AICleanup, &f.KeepDays, &f.ETag, &f.LastModified, &f.LastFetchedAt, &f.LastError, &f.CreatedAt,
 		&f.FailCount, &f.FailingSince, &f.LastOKAt, &f.InitialUnread, &f.TeaserChecked, &f.TeaserOnly, &f.Saved, &f.LatestEntryAt,
-		&f.Unread, &f.Total)
+		&f.Unread, &f.Total, &f.Held, &f.Uncleaned)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -154,9 +159,9 @@ const DefaultKeepDays = 365
 // CreateFeed adds a feed, or returns the existing one with the same URL.
 func (s *Store) CreateFeed(ctx context.Context, f *Feed) (*Feed, bool, error) {
 	res, err := s.db.ExecContext(ctx, `
-INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, keep_days, initial_unread, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
-		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), f.KeepDays, f.InitialUnread, Now())
+INSERT INTO feeds (url, custom_title, category, preserve, preserve_since, ai_summary, ai_cleanup, keep_days, initial_unread, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING`,
+		f.URL, f.CustomTitle, f.Category, b2i(f.Preserve), f.PreserveSince, b2i(f.AISummary), b2i(f.AICleanup), f.KeepDays, f.InitialUnread, Now())
 	if err != nil {
 		return nil, false, err
 	}
@@ -177,6 +182,7 @@ type FeedPatch struct {
 	Preserve      *bool
 	PreserveSince **string // pointer to nil clears the date
 	AISummary     *bool
+	AICleanup     *bool
 	KeepDays      *int // 0 = keep forever
 }
 
@@ -208,6 +214,10 @@ func (s *Store) UpdateFeed(ctx context.Context, id int64, p FeedPatch) error {
 		set = append(set, "ai_summary = ?")
 		args = append(args, b2i(*p.AISummary))
 	}
+	if p.AICleanup != nil {
+		set = append(set, "ai_cleanup = ?")
+		args = append(args, b2i(*p.AICleanup))
+	}
 	if p.KeepDays != nil {
 		set = append(set, "keep_days = ?")
 		args = append(args, *p.KeepDays)
@@ -217,7 +227,14 @@ func (s *Store) UpdateFeed(ctx context.Context, id int64, p FeedPatch) error {
 		return err
 	}
 	args = append(args, id)
-	return affected(s.db.ExecContext(ctx, `UPDATE feeds SET `+strings.Join(set, ", ")+` WHERE id = ?`, args...))
+	if err := affected(s.db.ExecContext(ctx, `UPDATE feeds SET `+strings.Join(set, ", ")+` WHERE id = ?`, args...)); err != nil {
+		return err
+	}
+	if p.AICleanup != nil && !*p.AICleanup {
+		// Nothing will come for the articles that were waiting, so they are shown as they are.
+		return s.releaseHeld(ctx, `feed_id = ?`, id)
+	}
+	return nil
 }
 
 func (s *Store) DeleteFeed(ctx context.Context, id int64) error {

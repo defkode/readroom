@@ -6,6 +6,8 @@ A small self-hosted RSS/Atom reader. One static Go binary, one SQLite file.
 - REST API for everything the UI does — summaries, read/starred, readlists, exports
 - AI summaries, articles read aloud and articles translated into your own language, made by models
   you run yourself on another computer — the server stays small enough for a NAS or a Raspberry Pi
+- AI clean-up, per feed: a model reads every article before you see it, notes its language and drops
+  what is not the article — bylines, promotions, links to other stories — leaving clean Markdown
 - Save any single article by its address — from a field in the app, or by sharing a page to the installed app on Android
 - Per-feed settings: name, category, and whether to keep full local copies of articles (and since when)
 - Preserved articles (text + images) live inside the database, so they survive the original going away
@@ -39,11 +41,11 @@ For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (
 it (Readroom behind its own Tailscale HTTPS node). `make image-qnap` still builds an arm64 archive
 that Container Station can import, for when the registry is out of reach.
 
-## The worker: summaries, listening and translation
+## The worker: clean-up, summaries, listening and translation
 
 The server can sit on something very small because the models run elsewhere: it only keeps queues —
-articles waiting for a summary, articles asked to be read aloud, articles asked for in your own
-language. `readroom worker` is that elsewhere in one piece. Install it on a computer that has the
+articles waiting for AI clean-up or a summary, articles asked to be read aloud, articles asked for in
+your own language. `readroom worker` is that elsewhere in one piece. Install it on a computer that has the
 models (a desktop, usually), and it keeps the queues empty whenever that computer is on. Each part is
 optional.
 
@@ -76,6 +78,8 @@ if it is already running.
 - For summaries: a model behind an OpenAI-compatible address — [Ollama](https://ollama.com),
   llama.cpp's `llama-server`, LM Studio, a hosted service — or the `claude` CLI, or any command that
   takes a prompt and prints an answer.
+- For AI clean-up: the same kind of model as for summaries; it only has to read and answer in a few
+  lines, so a small fast one does.
 - For translation: the same kind of model as for summaries, but one that writes your language well.
 - For listening: `ffmpeg`, and a text-to-speech command — see [Listening](#listening) for using your
   own. The bundled one, `tiny-voca-speak` (English), needs only [uv](https://docs.astral.sh/uv/) and
@@ -93,6 +97,10 @@ every setting explained; edit it. The token is the server's `READROOM_TOKEN`.
 ```toml
 server = "https://readroom.example.ts.net"
 token_file = "~/.config/readroom/token"   # or token = "…"
+
+# [cleanup]                               # AI clean-up, for the feeds that have it on; same settings
+# api = "http://127.0.0.1:11434/v1"       # as [summaries]. New articles of those feeds wait for it.
+# model = "llama3.2"
 
 [summaries]                               # remove a section to leave that work to someone else
 api = "http://127.0.0.1:11434/v1"         # any OpenAI-compatible server: Ollama, llama.cpp, LM Studio…
@@ -116,6 +124,7 @@ voice = "tiny-voca M2"
 
 ```
 ok    server       https://readroom.example.ts.net answers and accepts the token
+ok    cleanup      llama3.2 in 1.2s: language en, blocks drop, keep, keep, drop
 ok    summaries    llama3.2 in 3.0s: The harbour board voted against replacing the lamp…
 ok    translations llama3.2 into Polish in 2.1s: Latarnia morska zachowuje swoją lampę / …
 ok    speech       9 kB of audio/mpeg in 0.4s
@@ -148,13 +157,16 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 
 | | |
 |---|---|
-| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, ai_summary?, keep_days?, unread?}` (`ai_summary` is on unless sent as `false`; `unread`: how much of the backlog starts unread — `recent` by default, `latest`, `all` or `none`); `url` may be a feed or a page that leads to one, and `422` explains an address that is neither. Feeds report their health (`fail_count`, `failing_since`, `last_ok_at`, `broken`, `stale`) and `teaser_only`, set when their articles are far longer on the site than in the feed |
-| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary`, `keep_days` (default 365; `0` keeps articles forever) |
+| `GET /feeds` · `POST /feeds` | list · add `{url, title?, category?, preserve?, preserve_since?, ai_summary?, ai_cleanup?, keep_days?, unread?}` (`ai_summary` is on unless sent as `false`; `ai_cleanup` is off unless sent as `true`; `unread`: how much of the backlog starts unread — `recent` by default, `latest`, `all` or `none`); `url` may be a feed or a page that leads to one, and `422` explains an address that is neither. Feeds report their health (`fail_count`, `failing_since`, `last_ok_at`, `broken`, `stale`) and `teaser_only`, set when their articles are far longer on the site than in the feed |
+| `GET/PATCH/DELETE /feeds/{id}` | `PATCH` takes any of `title`, `category`, `url`, `preserve`, `preserve_since` (`"2026-10-01"` or `null`), `ai_summary`, `ai_cleanup`, `keep_days` (default 365; `0` keeps articles forever) |
 | `POST /feeds/{id}/refresh` | fetch now |
 | `POST /articles` | `{url}` — save the article at an address, no feed needed: the page is read as an anonymous visitor would get it (text hidden by a style included), and stored with its images under the built-in "Saved articles" feed (`saved: true` in `GET /feeds`). Answers `201` with `{created: true, entry}`, `200` with `created: false` when that address is already saved, `422` with the reason when no article could be read |
 | `GET /entries` | hidden articles are left out unless `hidden=true` asks for them instead; filters: `feed_id`, `category`, `readlist_id`, `read`, `starred`, `preserved`, `summary=missing\|present`, `q`, `order=asc` or `order=arrival` (newest arrivals first), `limit`; page with `before=<next>` |
 | `GET /entries/{id}` | includes `content` and `preserved_content`; every entry carries `reading_minutes`, an estimate from its text length |
 | `PATCH /entries/{id}` | any of `read`, `starred`, `hidden`, `summary`, `summary_model`, `position` (how far it has been read, as a share of its text from `0` to `1`; `GET /entries?reading=true` lists the articles begun and not finished) |
+| `GET /cleanup/pending` | work queue for AI clean-up — see below; `limit`, `exclude` |
+| `PUT /entries/{id}/cleanup` | `{of, roles, language?, model?}` — one judgment per block; `DELETE` removes the clean copy and queues the article again |
+| `POST /entries/{id}/cleanup/error` | `{error}` — a client reporting that it could not judge the article, which is then shown as it came |
 | `GET /summaries/pending` | work queue for a summarising script or agent — see below; `limit`, `max_chars`, `feed_id` |
 | `PUT /entries/{id}/summary` | `{summary, model}`; `DELETE` removes it and re-queues the article |
 | `POST /entries/{id}/audio` | ask for the article to be read aloud; the entry's `audio` is then `queued`, later `ready` or `failed` |
@@ -218,7 +230,7 @@ A `-cmd` command gets the instructions and the article on standard input and pri
 article is untrusted text: use a command that can only write text, not one that can act on what it
 reads (`-backend claude` runs the claude CLI with its tools switched off for that reason).
 
-To have this done all the time, see [the worker](#the-worker-summaries-listening-and-translation).
+To have this done all the time, see [the worker](#the-worker-clean-up-summaries-listening-and-translation).
 
 ## Listening
 
@@ -267,7 +279,55 @@ dates and money sensibly and makes about 13 minutes of speech in 10 seconds on a
 with [uv](https://docs.astral.sh/uv/), which installs what it needs, and downloads the model (27 MB)
 on first use. English only.
 
-To have this done all the time, see [the worker](#the-worker-summaries-listening-and-translation).
+To have this done all the time, see [the worker](#the-worker-clean-up-summaries-listening-and-translation).
+
+## AI clean-up
+
+What a feed or a page sends is rarely just the article: there is the author's biography, a line asking
+you to subscribe, links to other stories, markup that means nothing. Switch **AI clean-up** on in a
+feed's settings and every article of that feed is read by your model first. It notes the language the
+article is in, drops the blocks that are not the article, and puts right the ones that are mislabelled
+(a bold line that is really a heading, a paragraph that is really a quotation). What is left is kept as
+Markdown — headings, paragraphs, quotations, lists, code, pictures, tables, links, bold and italic,
+nothing else — beside the original, which is never changed. The reader, the EPUB and Markdown exports,
+translation and the spoken version all use the clean copy; "Show unedited" in the article shows it as
+it came.
+
+It is off for every feed until you turn it on, because of what it costs:
+
+- **New articles of that feed do not appear until the model has read them.** If the computer that runs
+  the model is off, they wait — in no list and no count — until it is on again. The feed's row under
+  Manage feeds says how many are waiting.
+- Articles the feed already had, read or not, stay where they are and are cleaned in turn.
+- An article the model cannot judge is shown as it came, with the reason on it.
+
+The model never writes an article's text. `GET /api/v1/cleanup/pending` hands each article out cut into
+**blocks**, held-back articles first:
+
+```json
+{"entries": [{"id": 42, "title": "…", "held": true, "of": "3f9c0a1b77d2",
+              "blocks": [{"kind": "text", "text": "By Ann Author"}, {"kind": "h2", "text": "…"},
+                         {"kind": "text", "text": "…"}, {"kind": "image", "text": "alt and caption"}]}],
+ "remaining": 7}
+```
+
+and `PUT /api/v1/entries/42/cleanup` takes one **role** for each block, in order, with the language:
+
+```json
+{"of": "3f9c0a1b77d2", "language": "en", "model": "qwen3.6", "roles": ["drop", "keep", "keep", "keep"]}
+```
+
+A role is `keep` (as it is), `drop`, or — for text — `h2`, `h3`, `text` or `quote`. The server builds
+the clean copy from its own blocks, so the worst a wrong answer can do is drop or mislabel one; `409`
+means the article has changed since (take it again), `422` the wrong number of roles or all of them
+`drop`. `POST …/cleanup/error` with `{"error": "…"}` gives up on an article; `DELETE …/cleanup` removes
+its clean copy and queues it again.
+
+`readroom clean` is an ordinary client of that queue, with the same choice of model as
+`readroom summarize`. It shows the model each block's first 280 characters and takes a few lines back,
+so an article takes a local model seconds rather than the minute a rewrite would; it refuses an answer
+that would drop most of an article. To have this done all the time — which the hold on new articles
+all but requires — add `[cleanup]` to [the worker](#the-worker-clean-up-summaries-listening-and-translation).
 
 ## Translation
 
@@ -312,12 +372,12 @@ readroom translate -backend claude
 
 It sends the pieces to the model a dozen at a time, so that it sees some context and a long article
 does not have to fit in one answer, and asks again piece by piece when an answer comes back jumbled. To
-have this done all the time, add `[translations]` to [the worker](#the-worker-summaries-listening-and-translation).
+have this done all the time, add `[translations]` to [the worker](#the-worker-clean-up-summaries-listening-and-translation).
 
 ## Layout
 
 ```
-cmd/readroom        entry point: serve, worker, summarize, translate, speak
+cmd/readroom        entry point: serve, worker, clean, summarize, translate, speak
 internal/store      SQLite schema and queries
 internal/fetch      feed polling, article preservation
 internal/export     EPUB and Markdown

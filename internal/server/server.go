@@ -96,6 +96,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/v1/entries/{id}/translation", s.apiDeleteTranslation)
 	api.HandleFunc("POST /api/v1/entries/{id}/translation/error", s.apiTranslationFailed)
 	api.HandleFunc("GET /api/v1/translations/pending", s.apiPendingTranslations)
+	api.HandleFunc("PUT /api/v1/entries/{id}/cleanup", s.apiSetCleanup)
+	api.HandleFunc("DELETE /api/v1/entries/{id}/cleanup", s.apiDeleteCleanup)
+	api.HandleFunc("POST /api/v1/entries/{id}/cleanup/error", s.apiCleanupFailed)
+	api.HandleFunc("GET /api/v1/cleanup/pending", s.apiPendingCleanup)
 
 	api.HandleFunc("GET /api/v1/readlists", s.apiReadlists)
 	api.HandleFunc("POST /api/v1/readlists", s.apiCreateReadlist)

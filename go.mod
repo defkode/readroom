@@ -8,6 +8,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.5.0
+	github.com/yuin/goldmark v1.8.7
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
 	modernc.org/sqlite v1.62.0

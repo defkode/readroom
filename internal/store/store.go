@@ -198,6 +198,24 @@ CREATE TABLE entry_translations (
 	content      TEXT NOT NULL DEFAULT ''  -- the article's HTML with its text translated
 );
 `,
+	`
+-- AI clean-up: for the feeds that have it on, every article is read by a model outside
+-- the server before it is shown. The model says what language it is in and which of its
+-- blocks belong to the article; what is left is kept as Markdown beside the original
+-- (clean), with the HTML that Markdown renders to (clean_html) so that showing it costs
+-- nothing. An article that arrives while its feed has clean-up on is held back — in no
+-- list and no count — until that has happened or been given up on.
+ALTER TABLE feeds ADD COLUMN ai_cleanup INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE entries ADD COLUMN language TEXT NOT NULL DEFAULT '';      -- "en", as the model judged it
+ALTER TABLE entries ADD COLUMN held INTEGER NOT NULL DEFAULT 0;        -- 1 while waiting for its clean copy
+ALTER TABLE entries ADD COLUMN cleaned_at TEXT;
+ALTER TABLE entries ADD COLUMN cleanup_model TEXT NOT NULL DEFAULT '';
+ALTER TABLE entries ADD COLUMN cleanup_error TEXT NOT NULL DEFAULT ''; -- why it could not be done, if it could not
+ALTER TABLE entry_bodies ADD COLUMN clean TEXT;
+ALTER TABLE entry_bodies ADD COLUMN clean_html TEXT;
+-- The queue is read often and is nearly always a handful of rows.
+CREATE INDEX entries_uncleaned ON entries (feed_id) WHERE cleaned_at IS NULL AND cleanup_error = '';
+`,
 }
 
 func Open(path string) (*Store, error) {

@@ -74,6 +74,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 		Preserve      bool   `json:"preserve"`
 		PreserveSince string `json:"preserve_since"`
 		AISummary     *bool  `json:"ai_summary"` // on unless the request turns it off
+		AICleanup     bool   `json:"ai_cleanup"` // off unless the request turns it on
 		KeepDays      *int   `json:"keep_days"`
 		Unread        string `json:"unread"` // how much of the backlog starts unread: recent (default), latest, all, none
 	}
@@ -113,7 +114,7 @@ func (s *Server) apiCreateFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	feed, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{
 		URL: feedURL, CustomTitle: strings.TrimSpace(in.Title), Category: strings.TrimSpace(in.Category),
-		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary == nil || *in.AISummary, KeepDays: keep, InitialUnread: in.Unread,
+		Preserve: in.Preserve, PreserveSince: since, AISummary: in.AISummary == nil || *in.AISummary, AICleanup: in.AICleanup, KeepDays: keep, InitialUnread: in.Unread,
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -140,6 +141,7 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		Preserve      *bool           `json:"preserve"`
 		PreserveSince json.RawMessage `json:"preserve_since"` // absent, null (no date) or a date
 		AISummary     *bool           `json:"ai_summary"`
+		AICleanup     *bool           `json:"ai_cleanup"`
 		KeepDays      *int            `json:"keep_days"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
@@ -149,7 +151,7 @@ func (s *Server) apiUpdateFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := pathID(r, "id")
-	p := store.FeedPatch{Title: in.Title, Category: in.Category, Preserve: in.Preserve, AISummary: in.AISummary, KeepDays: in.KeepDays}
+	p := store.FeedPatch{Title: in.Title, Category: in.Category, Preserve: in.Preserve, AISummary: in.AISummary, AICleanup: in.AICleanup, KeepDays: in.KeepDays}
 	if current, err := s.Store.Feed(r.Context(), id); err == nil && current.Saved && in.URL != nil && *in.URL != current.URL {
 		writeError(w, http.StatusBadRequest, "saved articles have no feed address to change")
 		return

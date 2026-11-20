@@ -541,6 +541,12 @@ type entryPage struct {
 	// and then nothing offers a translation.
 	Language    string
 	Translation translationView
+	// Lang is the language of the text on the page ("en"), when it is known.
+	Lang string
+	// Unedited says the page shows the article as it came although it has a clean copy.
+	Unedited bool
+	// SameLanguage says the article is already in the owner's language, so there is nothing to translate.
+	SameLanguage bool
 }
 
 // translationView is what the article page says about the article's translation.
@@ -592,7 +598,14 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	page := entryPage{Entry: e, Paragraph: paragraphs(e.Summary), FirstRead: firstRead, Lists: listsSheet{EntryID: e.ID}}
 	page.PrintName = printName(e)
-	page.Title, page.Body = e.Title, e.Body()
+	page.Title, page.Body, page.Lang = e.Title, e.Body(), e.Language
+	page.SameLanguage = e.Language != "" && e.Language == s.Language
+	// The article as it came, for whoever doubts the clean copy. A translation is of
+	// the clean copy, so it is not shown over the unedited text.
+	page.Unedited = e.Cleaned && r.URL.Query().Get("unedited") != ""
+	if page.Unedited {
+		page.Body = e.Source()
+	}
 	if s.Language != "" {
 		page.Language = languageName(s.Language)
 	}
@@ -600,10 +613,10 @@ func (s *Server) pageEntry(w http.ResponseWriter, r *http.Request) {
 		page.Translation = translationView{Language: languageName(e.TranslationLanguage), Code: e.TranslationLanguage, Model: e.TranslationModel}
 	}
 	// A translation that has arrived is what the article opens in; the original is one tap away.
-	if e.Translation == store.TranslationReady && r.URL.Query().Get("original") == "" {
+	if e.Translation == store.TranslationReady && r.URL.Query().Get("original") == "" && !page.Unedited {
 		if t, err := s.Store.Translation(ctx, id); err == nil {
 			page.Translation.Shown = true
-			page.Body = t.Content
+			page.Body, page.Lang = t.Content, t.Language
 			if t.Title != "" {
 				page.Title = t.Title
 			}

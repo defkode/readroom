@@ -92,3 +92,88 @@ func TestPieces(t *testing.T) {
 		t.Error("accepted the wrong number of pieces")
 	}
 }
+
+func TestCleanCopy(t *testing.T) {
+	const article = `<div class="byline"><span>By <a href="/a">Ann Author</a></span></div>
+<p><span style="color:red">Ann is a <b>staff writer</b> covering harbours.</span></p>
+<h1>The <em>lamp</em> stays</h1>
+<p>First <a href="https://example.com/x" class="link" data-x="1">linked</a> <font>paragraph</font>, with <i>stress</i>.</p>
+<p><strong>What the board said</strong></p>
+<p>&ldquo;We like the old lamp,&rdquo; the chair said.</p>
+<figure><img src="/assets/abc" alt="The lamp" width="800"><figcaption>Photo: <a href="/p">Pat</a></figcaption></figure>
+<ul><li>One<ul><li>Nested</li></ul></li><li>Two</li></ul>
+<blockquote><p>Quoted line.</p></blockquote>
+<pre><code>lamp := "old"
+keep(lamp)</code></pre>
+<p><a href="/subscribe">Subscribe to our newsletter</a></p>
+<hr>
+<p>Related: <a href="/other">Another story</a></p>`
+	blocks := Blocks(article)
+	var labels []string
+	for _, b := range blocks {
+		labels = append(labels, b.Label())
+	}
+	want := "text text h2 text text text image item item item quote code text rule text"
+	if got := strings.Join(labels, " "); got != want {
+		t.Fatalf("blocks = %s\nwant     %s", got, want)
+	}
+	if got := blocks[3].HTML; got != `First <a href="https://example.com/x">linked</a> paragraph, with <em>stress</em>.` {
+		t.Errorf("inline marks: %s", got)
+	}
+	if got := blocks[6].Text(); got != "The lamp Photo: Pat" {
+		t.Errorf("image as text: %q", got)
+	}
+
+	// What a reader of the blocks would say: the byline, the biography, the plea to
+	// subscribe and the related link go; a bold line is a heading; a paragraph is a quotation.
+	roles := []string{"drop", "drop", "drop", "", "h2", "quote", "keep", "", "", "", "", "", "drop", "", "drop"}
+	html, ok := Assemble(blocks, roles)
+	if !ok {
+		t.Fatal("not assembled")
+	}
+	for _, s := range []string{
+		`<p>First <a href="https://example.com/x">linked</a> paragraph, with <em>stress</em>.</p><h2>What the board said</h2>`,
+		`<blockquote><p>“We like the old lamp,” the chair said.</p></blockquote>`,
+		`<p><img src="/assets/abc" alt="The lamp"></p><p><em>Photo: <a href="/p">Pat</a></em></p>`,
+		`<ul><li>One<ul><li>Nested</li></ul></li><li>Two</li></ul>`,
+		`<blockquote><p>Quoted line.</p></blockquote><pre><code>lamp := &#34;old&#34;` + "\n" + `keep(lamp)</code></pre>`,
+	} {
+		if !strings.Contains(html, s) {
+			t.Errorf("clean HTML lacks %s:\n%s", s, html)
+		}
+	}
+	for _, s := range []string{"Ann", "Subscribe", "Related", "<hr>", "staff writer"} {
+		if strings.Contains(html, s) {
+			t.Errorf("clean HTML still has %q", s)
+		}
+	}
+
+	// It is kept as Markdown, and shown from that.
+	md, err := Markdown(html)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"First [linked](https://example.com/x) paragraph, with *stress*.", "## What the board said",
+		"> “We like the old lamp,” the chair said.", "![The lamp](/assets/abc)", "- One\n", "  - Nested\n- Two", "```\nlamp := \"old\"\nkeep(lamp)\n```"} {
+		if !strings.Contains(md, s) {
+			t.Errorf("Markdown lacks %q:\n%s", s, md)
+		}
+	}
+	back, err := FromMarkdown(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{`<h2>What the board said</h2>`, `<a href="https://example.com/x" rel="nofollow">linked</a>`,
+		`<img src="/assets/abc" alt="The lamp"`, "<blockquote>", "<li>Nested</li>", "keep(lamp)"} {
+		if !strings.Contains(back, s) {
+			t.Errorf("HTML from the Markdown lacks %s:\n%s", s, back)
+		}
+	}
+
+	if _, ok := Assemble(blocks, roles[:3]); ok {
+		t.Error("accepted too few roles")
+	}
+	if _, ok := Assemble(blocks[:1], []string{"h9"}); ok {
+		t.Error("accepted an unknown role")
+	}
+}

@@ -262,3 +262,33 @@ func TestTranslatePieces(t *testing.T) {
 		t.Errorf("model asked %d times", calls)
 	}
 }
+
+func TestJudge(t *testing.T) {
+	blocks := []cleanBlock{{"text", "By Ann Author"}, {"text", strings.Repeat("The article itself. ", 40)},
+		{"text", "A bold line that is a heading"}, {"text", "Subscribe to our newsletter"}}
+	ask := func(_ context.Context, _, text string) (string, error) {
+		if !strings.Contains(text, "Title: The lamp") || !strings.Contains(text, "1 text: By Ann Author") ||
+			!strings.Contains(text, "…") || strings.Count(text, "The article itself.") > 20 {
+			t.Errorf("question: %s", text)
+		}
+		return "<think>hm</think>language: EN\n1 drop\n3: h2\n4 - drop\n9 drop\n2 rewrite\n", nil
+	}
+	language, roles, err := judge(context.Background(), func(ctx context.Context, i, x string) (string, error) {
+		answer, err := ask(ctx, i, x)
+		return strings.TrimSpace(thinkBlock.ReplaceAllString(answer, "")), err
+	}, "The lamp", blocks)
+	if err != nil || language != "en" || strings.Join(roles, " ") != "drop keep h2 drop" {
+		t.Errorf("judged %q %v, %v", language, roles, err)
+	}
+
+	silent := func(context.Context, string, string) (string, error) { return "All fine!", nil }
+	if _, _, err := judge(context.Background(), silent, "The lamp", blocks); err != errNoAnswer {
+		t.Errorf("an answer without a language: %v", err)
+	}
+	if _, bad := tooMuchDropped(blocks, []string{"drop", "keep", "keep", "drop"}); bad {
+		t.Error("dropping the byline and the plea was refused")
+	}
+	if why, bad := tooMuchDropped(blocks, []string{"keep", "drop", "keep", "keep"}); !bad {
+		t.Errorf("dropping the article itself was accepted: %s", why)
+	}
+}

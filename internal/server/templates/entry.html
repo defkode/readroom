@@ -13,7 +13,7 @@
   {{with .Entry}}
   <header>
     <p class="meta"><a href="/?feed_id={{.FeedID}}">{{.FeedTitle}}</a>{{if .Author}} · {{.Author}}{{end}}</p>
-    <h1{{if $.Page.Translation.Shown}} lang="{{$.Page.Translation.Code}}"{{end}}>{{if $.Page.Title}}{{$.Page.Title}}{{else}}Untitled{{end}}</h1>
+    <h1{{if $.Page.Lang}} lang="{{$.Page.Lang}}"{{end}}>{{if $.Page.Title}}{{$.Page.Title}}{{else}}Untitled{{end}}</h1>
     <p class="meta"><time datetime="{{.PublishedAt}}">{{date .PublishedAt}}</time>{{if .ReadingMinutes}} · {{.ReadingMinutes}} min read{{end}}{{if .Preserved}} · saved locally{{end}}</p>
     <p class="status">
       {{if not $.Page.FirstRead}}<span class="read" title="{{if .ReadAt}}Read on {{date (deref .ReadAt)}}{{else}}Read before reading times were recorded{{end}}">{{icon "check"}}{{readWhen .ReadAt}}</span>{{end}}
@@ -21,8 +21,11 @@
       <button data-action="mark-unread" data-id="{{.ID}}">Mark as unread</button>
       {{if .Hidden}}<button data-action="unhide-entry" data-id="{{.ID}}">Show again</button>
       {{else}}<button data-action="hide-entry" data-id="{{.ID}}" title="Keep this article out of every list">Hide</button>{{end}}
-      {{if and $.Page.Language (not .Translation)}}<button data-action="request-translation" data-id="{{.ID}}" title="Translate this article into {{$.Page.Language}}">Translate</button>{{end}}
+      {{if .Cleaned}}{{if $.Page.Unedited}}<button data-action="show-version" data-href="/entries/{{.ID}}" title="Back to the copy AI clean-up made">Show the clean copy</button>
+      {{else}}<button data-action="show-version" data-href="/entries/{{.ID}}?unedited=1" title="Cleaned up by {{if .CleanupModel}}{{.CleanupModel}}{{else}}AI{{end}}: see the article as it came">Show unedited</button>{{end}}{{end}}
+      {{if and $.Page.Language (not .Translation) (not $.Page.SameLanguage)}}<button data-action="request-translation" data-id="{{.ID}}" title="Translate this article into {{$.Page.Language}}">Translate</button>{{end}}
       {{if .PreserveError}}<span class="err">Local copy failed: {{.PreserveError}}</span>{{end}}
+      {{if .CleanupError}}<span class="err">AI clean-up failed, so this is the article as it came: {{.CleanupError}}</span>{{end}}
     </p>
   </header>
   {{end}}
@@ -84,7 +87,7 @@
   </details>
   <script src="{{static "folds.js"}}"></script>
   {{end}}
-  <div class="content"{{if .Translation.Shown}} lang="{{.Translation.Code}}"{{end}}>{{html .Body}}</div>
+  <div class="content"{{if .Lang}} lang="{{.Lang}}"{{end}}>{{html .Body}}</div>
   {{/* Printed, the article ends with the way back to its original. */}}
   {{if .Entry.URL}}<footer class="source print-only">{{.QR}}<p><b>Original</b>{{.Entry.URL}}</p></footer>{{end}}
   {{/* Filled in by the script from the list this article was opened from. */}}

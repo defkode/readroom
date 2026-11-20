@@ -40,6 +40,9 @@ type Entry struct {
 	PreservedAt    *string `json:"preserved_at"`
 	PreserveError  string  `json:"preserve_error,omitempty"`
 	Audio          string  `json:"audio"`       // spoken version: "" (none), "queued", "ready" or "failed"
+	Language       string  `json:"language"`    // the language it is written in ("en"), once AI clean-up has read it; else empty
+	Cleaned        bool    `json:"cleaned"`     // shown from the clean copy AI clean-up made
+	Held           bool    `json:"held"`        // waiting for that clean copy, and until then in no list
 	Translation    string  `json:"translation"` // translation into the owner's language: "" (none), "queued", "ready" or "failed"
 	Saved          bool    `json:"saved"`       // saved by address rather than brought by a feed; feed_title is then its site
 	Position       float64 `json:"position"`    // how far it has been read, as a share of its text: 0 not begun, 1 finished
@@ -49,6 +52,10 @@ type Entry struct {
 	// Only filled when a single entry is loaded.
 	Content          string  `json:"content,omitempty"`           // HTML from the feed
 	PreservedContent *string `json:"preserved_content,omitempty"` // full article HTML, images at /assets/…
+	Clean            *string `json:"clean,omitempty"`             // the clean copy, as Markdown
+	CleanHTML        *string `json:"clean_html,omitempty"`        // the same, as the HTML it renders to
+	CleanupModel     string  `json:"cleanup_model,omitempty"`     // what judged it, as the client named itself
+	CleanupError     string  `json:"cleanup_error,omitempty"`     // why there is no clean copy, if it was tried
 	Readlists        []int64 `json:"readlists,omitempty"`
 	AudioVoice       string  `json:"audio_voice,omitempty"` // what read it, as the client named itself
 	AudioAt          string  `json:"audio_at,omitempty"`    // when the recording arrived
@@ -60,8 +67,16 @@ type Entry struct {
 	TranslationError    string `json:"translation_error,omitempty"`
 }
 
-// Body is the best HTML available: the preserved copy, else the feed's content.
+// Body is the HTML to read: the clean copy when there is one, else the source.
 func (e *Entry) Body() string {
+	if e.CleanHTML != nil && *e.CleanHTML != "" {
+		return *e.CleanHTML
+	}
+	return e.Source()
+}
+
+// Source is the article as it came: the preserved copy, else the feed's content.
+func (e *Entry) Source() string {
 	if e.PreservedContent != nil && *e.PreservedContent != "" {
 		return *e.PreservedContent
 	}
@@ -72,16 +87,16 @@ const entryCols = `
 e.id, e.feed_id, coalesce(nullif(f.custom_title,''), nullif(f.feed_title,''), f.url), f.category,
 e.guid, e.url, e.title, e.author, e.published_at, e.excerpt, e.image, e.summary, e.summary_model, e.text_length,
 e.read, e.read_at, e.starred, EXISTS (SELECT 1 FROM readlist_entries rl WHERE rl.entry_id = e.id), e.hidden_at IS NOT NULL,
-e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), coalesce((` + translationState + `), ''), f.kind = 'saved', e.position, e.position_at, e.created_at`
+e.preserved_at IS NOT NULL, e.preserved_at, e.preserve_error, coalesce((` + audioState + `), ''), coalesce((` + translationState + `), ''), e.language, e.cleaned_at IS NOT NULL, e.held, f.kind = 'saved', e.position, e.position_at, e.created_at`
 
 func scanEntry(r interface{ Scan(...any) error }, extra ...any) (*Entry, error) {
 	var e Entry
 	dest := []any{&e.ID, &e.FeedID, &e.FeedTitle, &e.Category, &e.GUID, &e.URL, &e.Title, &e.Author,
 		&e.PublishedAt, &e.Excerpt, &e.Image, &e.Summary, &e.SummaryModel, &e.TextLength, &e.Read, &e.ReadAt, &e.Starred, &e.InReadlist, &e.Hidden, &e.Preserved, &e.PreservedAt,
-		&e.PreserveError, &e.Audio, &e.Translation, &e.Saved, &e.Position, &e.PositionAt, &e.CreatedAt}
+		&e.PreserveError, &e.Audio, &e.Translation, &e.Language, &e.Cleaned, &e.Held, &e.Saved, &e.Position, &e.PositionAt, &e.CreatedAt}
 	if len(extra) > 0 {
 		// Any extra asks for the bodies; a *string among them takes one more column after those.
-		dest = append(dest, &e.Content, &e.PreservedContent)
+		dest = append(dest, &e.Content, &e.PreservedContent, &e.Clean, &e.CleanHTML)
 		for _, x := range extra {
 			if more, ok := x.(*string); ok {
 				dest = append(dest, more)
@@ -179,6 +194,7 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 	} else {
 		add("e.hidden_at IS NULL")
 	}
+	add("e.held = 0") // not yet through AI clean-up: as if it had not arrived
 	if f.FeedID != 0 {
 		add("e.feed_id = ?", f.FeedID)
 	}
@@ -285,7 +301,7 @@ func (s *Store) Entries(ctx context.Context, f EntryFilter) ([]*Entry, error) {
 
 // Entry loads one entry with its content and readlist memberships.
 func (s *Store) Entry(ctx context.Context, id int64) (*Entry, error) {
-	e, err := scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+	e, err := scanEntry(s.db.QueryRowContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html
 FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id WHERE e.id = ?`, id), true)
 	if err != nil {
 		return nil, err
@@ -299,6 +315,10 @@ FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_i
 		if at != nil {
 			e.AudioAt = *at
 		}
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT cleanup_model, cleanup_error FROM entries WHERE id = ?`, id).
+		Scan(&e.CleanupModel, &e.CleanupError); err != nil {
+		return nil, err
 	}
 	if e.Translation != "" {
 		var at *string
@@ -353,16 +373,18 @@ func (s *Store) AddEntries(ctx context.Context, feedID int64, items []NewEntry) 
 	defer tx.Rollback()
 	// Leave out what PruneExpired would delete again, or a feed that still lists
 	// old articles would bring them back as unread on every fetch.
-	var expired, preserve bool
+	var expired, preserve, hold bool
 	var cutoff string
 	var since *string
-	if err := tx.QueryRowContext(ctx, `SELECT keep_days > 0, `+expiryCutoff+`, preserve, preserve_since FROM feeds f WHERE id = ?`,
-		feedID).Scan(&expired, &cutoff, &preserve, &since); err != nil {
+	// An article of a feed with AI clean-up on is held back until it has been read by
+	// the model. Not one the owner saved by address: that was asked for by name.
+	if err := tx.QueryRowContext(ctx, `SELECT keep_days > 0, `+expiryCutoff+`, preserve, preserve_since, ai_cleanup = 1 AND kind = '' FROM feeds f WHERE id = ?`,
+		feedID).Scan(&expired, &cutoff, &preserve, &since, &hold); err != nil {
 		return 0, err
 	}
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO entries (feed_id, guid, url, title, author, published_at, excerpt, image, text_length, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
+INSERT INTO entries (feed_id, guid, url, title, author, published_at, excerpt, image, text_length, created_at, held)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
 	if err != nil {
 		return 0, err
 	}
@@ -384,7 +406,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (feed_id, guid) DO NOTHING`)
 			excerpt = it.Excerpt
 		}
 		res, err := stmt.ExecContext(ctx, feedID, it.GUID, it.URL, it.Title, it.Author, it.PublishedAt,
-			excerpt, image, length, now)
+			excerpt, image, length, now, b2i(hold))
 		if err != nil {
 			return 0, err
 		}
@@ -473,7 +495,7 @@ type ReadScope struct {
 }
 
 func (sc ReadScope) where() (string, []any) {
-	q := ` WHERE read = 0 AND hidden_at IS NULL`
+	q := ` WHERE read = 0 AND hidden_at IS NULL AND held = 0`
 	var args []any
 	if sc.FeedID != 0 {
 		q += ` AND feed_id = ?`
@@ -619,7 +641,7 @@ const needsCopyFirst = `(e.preserved_at IS NULL AND e.preserve_attempts < ` + "3
   AND (e.preserve_requested = 1
        OR (f.preserve = 1 AND (f.preserve_since IS NULL OR e.published_at >= f.preserve_since))))`
 
-const pendingSummaryWhere = `f.ai_summary = 1 AND e.hidden_at IS NULL AND e.summary = '' AND e.text_length >= ? AND NOT ` + needsCopyFirst
+const pendingSummaryWhere = `f.ai_summary = 1 AND e.hidden_at IS NULL AND e.summary = '' AND e.text_length >= ? AND NOT ` + needsCopyFirst + ` AND NOT ` + needsCleanupFirst
 
 // PendingSummaries lists entries waiting for an AI summary, newest first: their
 // feed has AI summaries on, they have none yet, and the text is at least
@@ -644,7 +666,7 @@ func (s *Store) PendingSummaries(ctx context.Context, minChars int, feedID int64
 		`SELECT count(*) FROM entries e JOIN feeds f ON f.id = e.feed_id WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html
 FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id WHERE `+where+`
 ORDER BY e.published_at DESC, e.id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
@@ -735,7 +757,7 @@ func (s *Store) RequestPreserve(ctx context.Context, id int64) error {
 // PendingPreserve returns entries that should have a local copy but don't yet:
 // explicitly requested ones, plus those covered by their feed's preserve setting.
 func (s *Store) PendingPreserve(ctx context.Context, limit int) ([]*Entry, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html
 FROM entries e JOIN feeds f ON f.id = e.feed_id JOIN entry_bodies b ON b.entry_id = e.id
 WHERE e.preserved_at IS NULL AND e.preserve_attempts < ?
   AND (e.preserve_requested = 1
@@ -791,6 +813,9 @@ func (s *Store) SavePreserved(ctx context.Context, id int64, html string, assets
 	if _, err := tx.ExecContext(ctx, staleTranslation, id); err != nil {
 		return err
 	}
+	if err := staleCleanup(ctx, tx, id); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE entries SET preserved_at = ?, preserve_requested = 0, preserve_error = '',
        text_length = ?, image = CASE WHEN image != '' AND ? != '' THEN ? ELSE image END
@@ -828,6 +853,9 @@ func (s *Store) RemovePreserved(ctx context.Context, id int64) error {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return err
 		}
+	}
+	if err := staleCleanup(ctx, tx, id); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM assets WHERE sha256 NOT IN (SELECT sha256 FROM entry_assets)`); err != nil {
 		return err

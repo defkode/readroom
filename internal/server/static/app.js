@@ -359,6 +359,7 @@ window.readroomBoot = (signal, soft) => {
       form.preserve.checked = d.preserve === 'true';
       form.since.value = d.since;
       form.ai.checked = d.ai === 'true';
+      form.cleanup.checked = d.cleanup === 'true';
       // A period set through the API may not be one of the offered choices.
       if (![...form.keep.options].some((o) => o.value === d.keep)) form.keep.add(new Option(`${d.keep} days`, d.keep));
       form.keep.value = d.keep;
@@ -461,6 +462,7 @@ window.readroomBoot = (signal, soft) => {
         preserve: form.preserve.checked,
         preserve_since: form.since.value || null,
         ai_summary: form.ai.checked,
+        ai_cleanup: form.cleanup.checked,
         keep_days: +form.keep.value,
       });
       readroomNav.reload();

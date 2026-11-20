@@ -41,6 +41,15 @@ server = "http://127.0.0.1:8090"
 
 # Remove a section to leave that work to someone else.
 
+# AI clean-up, for the feeds that have it switched on: the model reads every article
+# before it is shown, says what language it is in and what in it is not the article.
+# New articles of those feeds do not appear until this has run, so keep "every" short.
+# The same settings as [summaries].
+# [cleanup]
+# api = "http://127.0.0.1:11434/v1"
+# model = "llama3.2"
+# every = "1m"
+
 [summaries]
 # Any server that speaks the OpenAI API: Ollama, llama.cpp, LM Studio, a hosted one.
 api = "http://127.0.0.1:11434/v1"
@@ -91,6 +100,15 @@ type workerConfig struct {
 		MaxChars int    `toml:"max_chars"`
 		Every    string `toml:"every"`
 	} `toml:"summaries"`
+	Cleanup *struct {
+		Backend string `toml:"backend"`
+		API     string `toml:"api"`
+		APIKey  string `toml:"api_key"`
+		Model   string `toml:"model"`
+		Command string `toml:"command"`
+		Label   string `toml:"label"`
+		Every   string `toml:"every"`
+	} `toml:"cleanup"`
 	Translations *struct {
 		Backend string `toml:"backend"`
 		API     string `toml:"api"`
@@ -112,6 +130,8 @@ type workerConfig struct {
 // workerPlan is the configuration after it has been checked: what to run and how often.
 type workerPlan struct {
 	server, token string
+	cleanup          *cleanOpts
+	cleanupWait      time.Duration
 	summaries        *summaryOpts
 	translations     *translateOpts
 	speech           *speechOpts
@@ -183,6 +203,19 @@ func loadWorkerConfig(path string) (*workerPlan, error) {
 			return nil, fmt.Errorf("[summaries]: %w", err)
 		}
 	}
+	if s := cfg.Cleanup; s != nil {
+		p.cleanup = &cleanOpts{modelOpts: modelOpts{Backend: s.Backend, API: s.API, APIKey: s.APIKey, Model: s.Model,
+			Command: s.Command, Label: s.Label}}
+		if s.API != "" && s.Command != "" {
+			return nil, errors.New("[cleanup]: set api or command, not both")
+		}
+		if _, _, err := p.cleanup.asker(nil, 0); err != nil {
+			return nil, fmt.Errorf("[cleanup]: %w", err)
+		}
+		if p.cleanupWait, err = parseEvery(s.Every, time.Minute); err != nil {
+			return nil, fmt.Errorf("[cleanup]: %w", err)
+		}
+	}
 	if s := cfg.Translations; s != nil {
 		p.translations = &translateOpts{modelOpts: modelOpts{Backend: s.Backend, API: s.API, APIKey: s.APIKey, Model: s.Model,
 			Command: s.Command, Label: s.Label}}
@@ -205,8 +238,8 @@ func loadWorkerConfig(path string) (*workerPlan, error) {
 			return nil, fmt.Errorf("[speech]: %w", err)
 		}
 	}
-	if p.summaries == nil && p.translations == nil && p.speech == nil {
-		return nil, fmt.Errorf("%s: none of [summaries], [translations] and [speech] is there, so there is nothing to do", path)
+	if p.cleanup == nil && p.summaries == nil && p.translations == nil && p.speech == nil {
+		return nil, fmt.Errorf("%s: none of [cleanup], [summaries], [translations] and [speech] is there, so there is nothing to do", path)
 	}
 	return p, nil
 }
@@ -303,6 +336,13 @@ func workerRun(plan *workerPlan, once bool) error {
 			}
 		}()
 	}
+	if o := plan.cleanup; o != nil {
+		logf := func(format string, a ...any) { printf("cleanup: "+format, a...) }
+		start("cleanup", plan.cleanupWait, func(ctx context.Context) (bool, error) {
+			done, failed, err := runCleanup(ctx, c, *o, logf)
+			return done+failed > 0, err
+		})
+	}
 	if o := plan.summaries; o != nil {
 		logf := func(format string, a ...any) { printf("summaries: "+format, a...) }
 		start("summaries", plan.summariesWait, func(ctx context.Context) (bool, error) {
@@ -385,6 +425,23 @@ func workerCheck(plan *workerPlan) error {
 	}
 	err := c.do(ctx, "GET", "/api/v1/summaries/pending?limit=1&max_chars=1", nil, &queue)
 	report("server", err, fmt.Sprintf("%s answers and accepts the token", plan.server))
+
+	if o := plan.cleanup; o != nil {
+		ask, label, _ := o.asker(c.http, 4000)
+		start := time.Now()
+		language, roles, err := judge(ctx, ask, "A lighthouse keeps its lamp", []cleanBlock{
+			{"text", "By Ann Author, harbour correspondent"},
+			{"text", "The lighthouse on the northern headland will keep its original lamp after the harbour board voted on Tuesday against replacing it with a modern beacon."},
+			{"text", "Volunteers have maintained the mechanism since 1998 and raised the money for new bearings last year."},
+			{"text", "Subscribe to our newsletter for more harbour news every week."},
+		})
+		if err == nil && (roles[1] == "drop" || roles[2] == "drop") {
+			err = fmt.Errorf("the model would drop the article's own text (%s)", strings.Join(roles, ", "))
+		}
+		report("cleanup", err, fmt.Sprintf("%s in %.1fs: language %s, blocks %s", label, time.Since(start).Seconds(), language, strings.Join(roles, ", ")))
+	} else {
+		fmt.Printf("--    %-12s not configured\n", "cleanup")
+	}
 
 	if o := plan.summaries; o != nil {
 		ask, label, _ := o.asker(c.http, 1200)

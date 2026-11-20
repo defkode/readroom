@@ -45,7 +45,7 @@ One static Go binary and one SQLite file.
 | EPUB | written in-house (`internal/export`) | full control over valid XHTML and embedding images from the database |
 | UI | server-rendered `html/template` + small vanilla scripts (`app.js` drives a page, `player.js` the player and in-place page changes, `prefs.js`, `folds.js`, `transitions.js`) | no build step, no vendored framework; the script is a client of the same REST API |
 
-Packages: `cmd/readroom` (entry point: `serve`, `worker`, `summarize`, `translate`, `speak`), `internal/store` (schema, queries),
+Packages: `cmd/readroom` (entry point: `serve`, `worker`, `clean`, `summarize`, `translate`, `speak`), `internal/store` (schema, queries),
 `internal/fetch` (polling, preservation), `internal/export` (EPUB, Markdown), `internal/htmlx` (HTML
 helpers, excerpts), `internal/server` (API, web app, embedded templates and static files).
 
@@ -78,6 +78,10 @@ SQLite, schema version in `PRAGMA user_version`, forward-only migrations applied
 - **readlists** / **readlist_entries** — named, ordered-by-added collections of entries.
 - **entry_audio** — at most one row per entry: a request to have it read aloud (`requested_at`) and,
   once made, the recording as a blob (`data`, `mime`, `voice`, `created_at`), or why it failed (`error`).
+- AI clean-up adds to **feeds** `ai_cleanup`; to **entries** `language` (as the model judged it),
+  `held` (waiting for its clean copy, and so in no list), `cleaned_at`, `cleanup_model`,
+  `cleanup_error`; and to **entry_bodies** `clean` (the clean copy, Markdown) and `clean_html` (what
+  that Markdown renders to, kept so that showing an article costs nothing).
 - **entry_translations** — at most one row per entry: a request to have it translated (`language`,
   `requested_at`) and, once made, the translation (`title`, `summary`, `content` as HTML, `model`,
   `created_at`), or why it failed (`error`).
@@ -264,6 +268,51 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   far faster than real time on a CPU. It splits paragraphs into sentences, the unit the model reads.
 - **Schedule:** the worker (below) checks the queue every minute on the owner's desktop.
 
+### AI clean-up
+
+- A per-feed switch, **off by default**. For a feed that has it on, every article is read by a model
+  before it is shown. The model does two things: says what language the article is in, and says which
+  of its blocks are the article and what each one is.
+- **The model never writes the article's text.** The server cuts the article's HTML into a flat list
+  of blocks — heading (h2–h6; an h1 becomes h2, the title being the page's h1), text, list item,
+  quotation, code listing, image with its caption, table, rule — each reduced to the inline marks worth
+  keeping: link, bold, italic, inline code, image, sub- and superscript, strikethrough. Every other
+  element gives way to its contents; an empty link or emphasis disappears.
+- A client gives each block a **role**: `keep`, `drop`, or for text `h2`, `h3`, `text`, `quote`. The
+  server assembles the kept blocks, converts the result to **Markdown**, and stores that as the clean
+  copy beside the original, which is never changed. What is shown is the HTML that Markdown renders
+  to, so the Markdown is the copy and not a by-product.
+- **The clean copy is what everything uses** once it exists: the reader, EPUB and Markdown export, the
+  text handed out for summaries, translation and speech, the reading time. "Show unedited" in the
+  article (`?unedited=1`) shows the article as it came.
+- **The gate:** an article that arrives while its feed has clean-up on is *held* — in no list, no
+  count, no search — until its clean copy is stored. It then appears as arriving at that moment, at
+  the top of Unread. If the computer with the model is off, held articles wait. Articles saved by
+  address are never held: they were asked for by name.
+- Turning clean-up on does not hide anything: the feed's existing articles, read ones included, are
+  queued and replaced by their clean copies in turn. Turning it off lets held articles through as they
+  are and keeps the clean copies already made.
+- **A failure lets the article through.** If a client reports that it cannot judge an article, the
+  article is shown as it came, with the reason, and leaves the queue; removing the failure or the clean
+  copy (`DELETE …/cleanup`) queues it again.
+- **Queue:** `GET /api/v1/cleanup/pending`: held articles first, then unread, then read, newest first;
+  each as its blocks (`kind`, plain `text`). Hidden articles are skipped; an article whose full local
+  copy is on its way waits for it. `PUT /api/v1/entries/{id}/cleanup` takes `{of, roles, language,
+  model}`; `409` when the text has changed since, `422` for the wrong number of roles, an unknown role,
+  or roles that would leave nothing.
+- When an article's text is replaced — a local copy kept or removed — its clean copy is forgotten and
+  it is queued again (not held again). A summary waits for the clean copy; a translation made of the
+  old text is removed.
+- The article's language is put on the page (`lang`), and an article already in the owner's language
+  offers no translation.
+- `readroom clean` is the reference client. It shows the model the title and each block's kind and
+  first 280 characters, 80 blocks to a question, and asks for `language: xx` and one line per block
+  that needs a change; blocks it does not mention are kept. An article under 200 characters is passed
+  without asking. An answer without a language is not trusted at all, and one that would drop more than
+  60% of a longer article's text is refused; both are reported on the article. A model out of reach
+  stops the run and leaves the queue as it is.
+- **Schedule:** the worker (below) checks the queue every minute, when it has a `[cleanup]` section.
+
 ### Translation
 
 - Optional, and off unless the server is told the owner's language: `READROOM_LANGUAGE=pl`. Without it
@@ -305,7 +354,7 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 
 - `readroom worker` is the client side in one piece: one process on a computer that has the models,
   keeping both queues empty, set up by one file (`~/.config/readroom/worker.toml`: the server, its
-  token or a file holding it, and a section each for `[summaries]`, `[translations]` and `[speech]`). A section left out is
+  token or a file holding it, and a section each for `[cleanup]`, `[summaries]`, `[translations]` and `[speech]`). A section left out is
   work left to someone else. It adds nothing to the API and does nothing `summarize`, `translate` and
   `speak` do not; those stay for single runs and scripts.
 - A model is reached in one of two general ways, so no engine needs code of its own: an
@@ -315,7 +364,8 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
 - Each queue has its own loop: work until it is empty, wait `every` (5 minutes for summaries, 1 for
   translations and speech, where somebody is waiting), again. A failure — server out of reach, model not started — is
   logged once, retried at the same pace, and its end is logged too.
-- `worker init` writes a commented file; `worker check` tries the server and token, one sample summary,
+- `worker init` writes a commented file; `worker check` tries the server and token, one sample clean-up
+  (which must not drop the article's own text), one sample summary,
   one sample translation (which must keep its link) and one sample sentence of speech, and writes
   nothing to the server; `worker install` writes and
   starts a systemd user service (with the installing shell's `PATH`, which a user service otherwise
@@ -480,6 +530,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
 | Article text lives in its own table, and the Unread indexes hold unread rows only | every list had to step over each article's HTML to read its flags; and over time nearly everything is read, so an index of what is not stays small |
 | Articles are read aloud on request only, by a client outside the server, through a queue like the summaries' | speech for every article would be made mostly for nothing; and the NAS is too small for a model, while the desktop makes 13 minutes of speech in 10 seconds |
+| AI clean-up asks the model which blocks belong and what they are, never for the text | a model that rewrites an article can shorten, rephrase or lose a paragraph, and nobody would notice in a reader; judging blocks cannot change a word, takes seconds instead of a minute, and gives an answer whose shape can be checked |
+| New articles of a feed with clean-up on are held until they have their clean copy (the owner's choice over a time limit) | the owner wants never to see an article that has not been through it; the price, accepted knowingly, is that nothing new from those feeds appears while the desktop is off |
+| A reported failure releases a held article | the alternative is an article that stays invisible for good because one model could not read it |
+| Clean-up is per feed and off by default | it changes when articles appear and spends model time on every one; a feed whose markup is already clean gains little |
+| The clean copy is stored as Markdown beside the original, with its rendered HTML | Markdown's vocabulary is exactly what a clean article needs, so nothing else can creep in, and it is what translation, speech and export want; keeping the original means an article can be cleaned again by a better model, and "Show unedited" always has an answer |
 | Translation is on request, per article, through a queue like listening's | the owner reads English and wants the odd article in Polish; translating everything would occupy the desktop's model for hours to make text mostly never opened |
 | The owner's language is a server setting (`READROOM_LANGUAGE`), not a per-device preference or a parameter of each request | it is one fact about the owner, set once like the token; the queue then tells any client what to translate into, so clients need no language setting of their own |
 | An article is handed out as pieces of inline HTML and put back together by the server | a model given a whole page of HTML loses images, breaks nesting and runs out of room on a long article; pieces keep the structure out of its hands, can be done a few at a time by a small local model, and make "as many back as went out" a check any client can be held to |
@@ -527,6 +582,12 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
   waits (up to 30 days).
 - The bundled text-to-speech script is English only, and mispronounces some names and unusual words.
+- With AI clean-up on, a feed's new articles appear only while the owner's desktop is on. Nothing in
+  the app says so outside Manage feeds.
+- Clean-up judges whole blocks: it cannot remove an advertisement from the middle of a paragraph. It
+  is as good as the model's judgment — seen so far: bylines, credits and "follow us" lines go, and
+  occasionally the line naming who said a pull quote. Figures become a picture with an italic caption,
+  and markup inside tables beyond text is lost.
 - Translations are made only while the owner's desktop is on, like summaries, and take a local model
   about a minute for a short article.
 - Only the article page is translated: lists, search, exports (EPUB, Markdown), print's file name and

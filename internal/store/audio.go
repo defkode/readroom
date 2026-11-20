@@ -61,7 +61,7 @@ func (s *Store) PendingAudio(ctx context.Context, exclude []int64, limit int) ([
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*)`+from+` WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content`+from+`
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+`, b.content, b.preserved_content, b.clean, b.clean_html`+from+`
 JOIN entry_bodies b ON b.entry_id = e.id WHERE `+where+` ORDER BY a.requested_at, e.id LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err

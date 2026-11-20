@@ -13,6 +13,8 @@ import (
 // Markdown renders one entry as a Markdown document with YAML front matter.
 // baseURL (e.g. "http://nas:8090") makes preserved image links absolute.
 func Markdown(e *store.Entry, baseURL string) (string, error) {
+	// An article with a clean copy is exported from that; converting it again
+	// makes its image addresses absolute and changes nothing else.
 	body, err := htmltomarkdown.ConvertString(e.Body(), converter.WithDomain(baseURL))
 	if err != nil {
 		return "", err

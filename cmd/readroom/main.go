@@ -47,12 +47,14 @@ func main() {
 		err = speak(os.Args[2:])
 	case "translate":
 		err = translate(os.Args[2:])
+	case "clean":
+		err = clean(os.Args[2:])
 	case "worker":
 		err = worker(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Println("readroom", version)
 	default:
-		fmt.Fprintln(os.Stderr, `usage: readroom [serve|worker|summarize|speak|translate|version]
+		fmt.Fprintln(os.Stderr, `usage: readroom [serve|worker|clean|summarize|translate|speak|version]
 
   serve       run the reader (default). Configured through the environment:
                 READROOM_ADDR      listen address            (default :8090)
@@ -68,6 +70,8 @@ func main() {
   worker      write the summaries and record the articles asked to be read aloud, on
               a computer that has the models, from one configuration file; see
               "readroom worker -h"
+  clean       AI clean-up: have an LLM find each waiting article's language and what in
+              it is not the article; see "readroom clean -h"
   summarize   fill in missing article summaries with an LLM; see "readroom summarize -h"
   translate   translate the articles asked for in your own language with an LLM;
               see "readroom translate -h"
