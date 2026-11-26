@@ -474,6 +474,10 @@ func TestOPMLRoundTrip(t *testing.T) {
 	if len(feeds) != 2 || feeds[0].Category != "News" || feeds[1].Category != "" {
 		t.Fatalf("imported feeds: %+v", feeds)
 	}
+	// Named by the file from the start.
+	if feeds[0].Title != "A" || feeds[1].Title != "B" {
+		t.Fatalf("imported feeds are titled %q and %q, want A and B", feeds[0].Title, feeds[1].Title)
+	}
 	out, _ := io.ReadAll(a.call("GET", "/api/v1/export/opml", nil, nil).Body)
 	var parsed opml
 	if err := xml.Unmarshal(out, &parsed); err != nil || len(parsed.Body) != 2 {
@@ -879,5 +883,39 @@ func TestPeriodFilter(t *testing.T) {
 	}
 	if strings.Contains(html, "Stale post") || strings.Contains(html, "mark-all-read") {
 		t.Error("the page for the last month lists the old post or offers to mark everything read")
+	}
+}
+
+func TestImportKeepsRenames(t *testing.T) {
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>Own Title</title></channel></rss>`)
+	}))
+	defer site.Close()
+	a := newApp(t)
+	doc := fmt.Sprintf(`<opml version="2.0"><body><outline text="Own Title" title="Own Title" xmlUrl="%[1]s/a.xml"/>
+<outline text="My name for it" title="My name for it" xmlUrl="%[1]s/b.xml"/></body></opml>`, site.URL)
+	req, _ := http.NewRequest("POST", a.url+"/api/v1/import/opml", strings.NewReader(doc))
+	req.Header.Set("Authorization", "Bearer secret")
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("import: %v %v", resp, err)
+	}
+	var feeds []store.Feed
+	for i := 0; i < 100; i++ {
+		a.call("GET", "/api/v1/feeds", nil, &feeds)
+		if len(feeds) == 2 && feeds[0].LastOKAt != nil && feeds[1].LastOKAt != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	byURL := map[string]store.Feed{}
+	for _, f := range feeds {
+		byURL[strings.TrimPrefix(f.URL, site.URL)] = f
+	}
+	// A rename survives; a name that was only the feed's own title is not kept as one.
+	if f := byURL["/b.xml"]; f.Title != "My name for it" || f.CustomTitle != "My name for it" || f.FeedTitle != "Own Title" {
+		t.Errorf("renamed feed after its first fetch: %+v", f)
+	}
+	if f := byURL["/a.xml"]; f.Title != "Own Title" || f.CustomTitle != "" {
+		t.Errorf("feed imported under its own title: title %q, custom %q", f.Title, f.CustomTitle)
 	}
 }

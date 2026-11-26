@@ -279,9 +279,11 @@ WHERE id = ?`, now, o.Err.Error(), floor, now, id)
 	if _, err := s.db.ExecContext(ctx, `
 UPDATE feeds SET last_fetched_at = ?, last_ok_at = ?, last_error = '', fail_count = 0, failing_since = NULL,
        feed_title = CASE WHEN ? != '' THEN ? ELSE feed_title END,
+       -- A name that is just the feed's own is no rename (an import cannot tell them apart).
+       custom_title = CASE WHEN custom_title = ? THEN '' ELSE custom_title END,
        site_url   = CASE WHEN ? != '' THEN ? ELSE site_url END,
        etag = ?, last_modified = ?
-WHERE id = ?`, now, now, o.Title, o.Title, o.SiteURL, o.SiteURL, o.ETag, o.LastModified, id); err != nil {
+WHERE id = ?`, now, now, o.Title, o.Title, o.Title, o.SiteURL, o.SiteURL, o.ETag, o.LastModified, id); err != nil {
 		return err
 	}
 	if o.MovedTo != "" {

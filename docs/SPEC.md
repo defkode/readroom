@@ -123,7 +123,10 @@ from an image to its entries. After a migration the database is vacuumed and ana
   requested, or due under the feed's "keep local copies" setting). Being unread does not protect one.
 - A fetch skips items that would be deleted again, so a feed that still lists old articles does not
   bring them back as unread. A newly added feed therefore starts with at most the last `keep_days` days.
-- OPML import and export; categories map to OPML folders.
+- OPML import and export; categories map to OPML folders. The export names each feed as the owner
+  sees it, and the import keeps that name as the owner's own, so a rename survives a move to another
+  instance; the first fetch drops the name again where it is only the feed's own title. Nothing else
+  about a feed travels in OPML (its settings, what was read) — "Download everything" is for that.
 
 ### Feed health
 

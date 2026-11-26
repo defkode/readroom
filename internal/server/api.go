@@ -874,7 +874,16 @@ func (s *Server) apiImportOPML(w http.ResponseWriter, r *http.Request) {
 	walk = func(outlines []opmlOutline, category string) {
 		for _, o := range outlines {
 			if feedURL, ok := validFeedURL(o.XMLURL); ok {
-				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, Category: category, AISummary: true, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
+				// The name the file gives is kept as the owner's name for the feed, so a rename
+				// survives the move; the first fetch drops it where it is only the feed's own title.
+				name := o.Title
+				if name == "" {
+					name = o.Text
+				}
+				if name == o.XMLURL {
+					name = ""
+				}
+				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, CustomTitle: name, Category: category, AISummary: true, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
 				if err == nil && created {
 					added++
 				} else {
