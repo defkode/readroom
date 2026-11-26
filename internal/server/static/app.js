@@ -473,7 +473,7 @@ window.readroomBoot = (signal, soft) => {
       await api('PATCH', `/readlists/${form.dataset.id}`, { name: form.name.value });
       readroomNav.reload();
     },
-    // The field's pattern has already held the form back unless it says "reset".
+    // The button is disabled, and the field's pattern holds the form back, unless it says "reset".
     async 'reset-database'(form) {
       await api('POST', '/reset', { confirm: form.confirm.value });
       try { sessionStorage.clear(); } catch { /* nothing kept then */ } // lists and undo offers of articles that are gone
@@ -626,6 +626,12 @@ window.readroomBoot = (signal, soft) => {
     // Not on(): a listener tied to the signal is taken away before the signal reports its end.
     signal.addEventListener('abort', () => clearTimeout(timer));
   }
+
+  // "Delete everything" can only be pressed once the word is there.
+  on(document, 'input', (e) => {
+    if (!e.target.matches('#reset-dialog [name=confirm]')) return;
+    e.target.form.querySelector('.btn.danger').disabled = e.target.value !== 'reset';
+  });
 
   // Display preferences apply immediately and are stored on this device.
   on(document, 'click', (e) => {

@@ -139,7 +139,7 @@ from an image to its entries. After a migration the database is vacuumed and ana
   with its settings, every article with what was read and starred, readlists, saved articles, local
   copies, summaries, translations and recordings. What is left is a fresh installation; the access
   token and each device's display settings are not in the database and stay. The sheet says what
-  goes, offers "Download everything" first, and wants the word `reset` typed; the API refuses
+  goes, offers "Download everything" first, and keeps "Delete everything" disabled until the word `reset` is typed; the API refuses
   without `{"confirm": "reset"}`. It waits for a running fetch to end, then gives the file's space
   back.
 
