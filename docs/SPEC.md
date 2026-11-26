@@ -445,7 +445,18 @@ The paragraph rule is a heuristic and can misjudge unusually structured feeds.
   changes, so "Show again" restores it exactly, star and readlists included. Hiding is followed by an
   Undo; later, hidden articles are listed under Settings → Hidden articles (Manage on a phone). They
   expire with the feed's other articles.
-- Search matches the title, the AI summary and the excerpt (substring, not full text).
+- Search matches the title, the AI summary and the excerpt (substring, not full text). It filters as
+  the owner types, a second after the last key (at once on Enter, or when the field is emptied), and
+  the search glass pulses while it waits.
+- **Period:** beside the search, a list can be narrowed by publication date — Today (since midnight
+  on the server's clock, the one list dates are shown by), Last week (7 days), Last month — or left
+  at Any time. In the API it is `period=today|week|month` on `GET /entries`.
+- A search and a period change the list where it stands: the page for the new address is fetched
+  and its list, view tabs, menus and "Continue reading" replace the ones shown, while the form is
+  left alone — so the field keeps its focus and a phone its keyboard. The address follows
+  (replacing, not adding to, history), so going back from an article returns to the filtered list.
+  The view tabs count within the search and period and their links keep both. "Mark all as read"
+  is not offered in a filtered list.
 
 ### Export
 
@@ -596,6 +607,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | MIT licence | the repository is public, and without a licence nobody else may use the code; MIT is the simplest permissive one for a small personal tool. The bundled font keeps its own Open Font License |
 | A clean copy ends with one list of the article's links, kept out of speech and translation | the owner lost minutes of a paid recording to a bibliography read out address by address; and whether an article indexes its links should not depend on its author |
 | Articles saved by address have AI clean-up on from the start | one saved by hand is one the owner means to read, often aloud; the same reasoning as for summaries |
+| Search filters as you type by swapping parts of the fetched page in, not by loading it | a page load, even a swapped-in one, takes the focus from the field and closes a phone's keyboard in the middle of a word |
+| The period filter is three fixed spans in the search field, not a date range | the owner asked for today, last week, last month; a native select costs no extra row on a phone |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions

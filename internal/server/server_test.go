@@ -829,3 +829,55 @@ func TestPrintedArticle(t *testing.T) {
 		t.Fatalf("QR code is not a drawn SVG: %.80s", code)
 	}
 }
+
+func TestPeriodFilter(t *testing.T) {
+	now := time.Date(2026, 11, 26, 15, 30, 0, 0, time.Local)
+	midnight := time.Date(2026, 11, 26, 0, 0, 0, 0, time.Local)
+	for period, want := range map[string]time.Time{
+		"today": midnight, "week": now.AddDate(0, 0, -7), "month": now.AddDate(0, -1, 0),
+	} {
+		if got := periodStart(period, now); got != want.UTC().Format(store.TimeFormat) {
+			t.Errorf("periodStart(%q) = %s, want %s", period, got, want.UTC().Format(store.TimeFormat))
+		}
+	}
+	if got := periodStart("year", now); got != "" {
+		t.Errorf("an unknown period starts at %q, want no limit", got)
+	}
+
+	// One article published an hour ago beside one from last year.
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>Dates</title>
+<item><title>Fresh post</title><link>http://%[1]s/fresh</link><guid>fresh</guid><pubDate>%[2]s</pubDate><description>New.</description></item>
+<item><title>Stale post</title><link>http://%[1]s/stale</link><guid>stale</guid><pubDate>%[3]s</pubDate><description>Old.</description></item>
+</channel></rss>`, r.Host, time.Now().Add(-time.Hour).UTC().Format(time.RFC1123), time.Now().AddDate(-1, 0, 0).UTC().Format(time.RFC1123))
+	}))
+	defer site.Close()
+	a := newApp(t)
+	if resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL, "keep_days": 0, "unread": "all"}, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add feed: %d", resp.StatusCode)
+	}
+	var page struct{ Entries []store.Entry }
+	a.call("GET", "/api/v1/entries", nil, &page)
+	if len(page.Entries) != 2 {
+		t.Fatalf("any time: %d entries, want 2", len(page.Entries))
+	}
+	for _, period := range []string{"week", "month"} {
+		a.call("GET", "/api/v1/entries?period="+period, nil, &page)
+		if len(page.Entries) != 1 || page.Entries[0].Title != "Fresh post" {
+			t.Errorf("period=%s: got %+v, want only the fresh post", period, page.Entries)
+		}
+	}
+
+	// The page offers the period, counts its tabs within it and keeps it in their links.
+	resp := a.call("GET", "/?view=all&period=month", nil, nil)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	for _, want := range []string{`<option value="month" selected>`, `period=month&amp;view=unread" role="tab" class="">Unread<b>1</b>`, "Fresh post"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the page for the last month lacks %q", want)
+		}
+	}
+	if strings.Contains(html, "Stale post") || strings.Contains(html, "mark-all-read") {
+		t.Error("the page for the last month lists the old post or offers to mark everything read")
+	}
+}

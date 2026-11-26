@@ -253,6 +253,8 @@ type entriesPage struct {
 	Tabs       []viewTab         // unread / all / starred switcher, keeping the current scope
 	Hidden     map[string]string // scope fields the search form must carry along
 	Query      string
+	Period     string            // today, week or month when the list is narrowed by publication date
+	Periods    []struct{ Name, Label string }
 	FeedID     int64
 	Category   *string
 	ListID     int64           // set in a readlist, where each row offers removal
@@ -277,6 +279,7 @@ type listing struct {
 	filter store.EntryFilter
 	view   string          // unread, all, starred or hidden
 	scope  url.Values      // what narrows the list (a feed, a category or a readlist), as query parameters
+	period string          // today, week or month: narrowed to what was published since then
 	feed   *store.Feed     // set when the scope is one feed
 	list   *store.Readlist // set when the scope is one readlist
 	empty  string          // what to say when nothing matches
@@ -286,6 +289,21 @@ type listing struct {
 
 // scoped reports whether the list is narrowed to a feed, category or readlist.
 func (l *listing) scoped() bool { return len(l.scope) > 0 }
+
+// filtered reports whether a search or a period picks articles out of the list.
+func (l *listing) filtered() bool { return l.filter.Query != "" || l.period != "" }
+
+// picked is the search and the period as query parameters, for links that keep them.
+func (l *listing) picked() url.Values {
+	v := url.Values{}
+	if l.filter.Query != "" {
+		v.Set("q", l.filter.Query)
+	}
+	if l.period != "" {
+		v.Set("period", l.period)
+	}
+	return v
+}
 
 // link builds an address within the same scope.
 func (l *listing) link(extra url.Values) string {
@@ -305,6 +323,9 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 		title: "Unread", tab: "unread", active: "view:unread", empty: "Nothing here yet."}
 	f := &l.filter
 	f.Limit = 40
+	if f.Since != "" {
+		l.period = q.Get("period")
+	}
 
 	switch {
 	case f.ReadlistID != 0:
@@ -356,7 +377,7 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 		}
 	case "hidden":
 		// What the owner put away, across everything; the one place it can be brought back.
-		*f = store.EntryFilter{Hidden: true, Query: f.Query, Before: f.Before, Limit: f.Limit}
+		*f = store.EntryFilter{Hidden: true, Query: f.Query, Since: f.Since, Before: f.Before, Limit: f.Limit}
 		l.scope, l.feed, l.list = url.Values{}, nil, nil
 		l.empty = "Nothing is hidden."
 		l.title, l.tab, l.active = "Hidden articles", "manage", "hidden"
@@ -371,14 +392,17 @@ func (s *Server) listingFor(ctx context.Context, q url.Values) (*listing, error)
 			l.title, l.tab, l.active = "All articles", "unread", "view:all"
 		}
 	}
-	if f.Query != "" {
+	switch {
+	case f.Query != "":
 		l.empty = "No matches."
+	case l.period != "":
+		l.empty = "Nothing published in that time."
 	}
 	return l, nil
 }
 
 // viewTabs is the Unread / All / Starred switcher for a list, each tab saying
-// how many articles it holds in the list's scope and search.
+// how many articles it holds in the list's scope, search and period, which its link keeps.
 func (s *Server) viewTabs(ctx context.Context, l *listing) ([]viewTab, error) {
 	if l.view == "hidden" {
 		return nil, nil // not a view of a list: it has no siblings
@@ -386,7 +410,7 @@ func (s *Server) viewTabs(ctx context.Context, l *listing) ([]viewTab, error) {
 	var tabs []viewTab
 	for _, t := range [][2]string{{"unread", "Unread"}, {"all", "All"}, {"starred", "Starred"}} {
 		count := store.EntryFilter{FeedID: l.filter.FeedID, Category: l.filter.Category,
-			ReadlistID: l.filter.ReadlistID, Query: l.filter.Query}
+			ReadlistID: l.filter.ReadlistID, Query: l.filter.Query, Since: l.filter.Since}
 		switch t[0] {
 		case "unread":
 			unread := false
@@ -399,7 +423,9 @@ func (s *Server) viewTabs(ctx context.Context, l *listing) ([]viewTab, error) {
 		if err != nil {
 			return nil, err
 		}
-		tabs = append(tabs, viewTab{Label: t[1], URL: l.link(url.Values{"view": {t[0]}}), Active: l.view == t[0], Count: n})
+		to := l.picked()
+		to.Set("view", t[0])
+		tabs = append(tabs, viewTab{Label: t[1], URL: l.link(to), Active: l.view == t[0], Count: n})
 	}
 	return tabs, nil
 }
@@ -417,12 +443,12 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		s.webFail(w, err)
 		return
 	}
-	page := entriesPage{Entries: entries, View: l.view, Query: f.Query, Hidden: map[string]string{"view": l.view},
+	page := entriesPage{Entries: entries, View: l.view, Query: f.Query, Period: l.period, Periods: periods, Hidden: map[string]string{"view": l.view},
 		FeedID: f.FeedID, Category: f.Category, ListID: f.ReadlistID, Empty: l.empty, Feed: l.feed, List: l.list,
 		Notice: !l.scoped() && l.view == "unread" && f.Query == "", HiddenView: l.view == "hidden", ByArrival: f.ByArrival,
 		// Bulk marking covers a whole feed, category or everything, so it is not offered
-		// where the list shows a narrower selection (a readlist, starred, hidden, a search).
-		CanMark: f.ReadlistID == 0 && l.view != "starred" && l.view != "hidden" && f.Query == ""}
+		// where the list shows a narrower selection (a readlist, starred, hidden, a search, a period).
+		CanMark: f.ReadlistID == 0 && l.view != "starred" && l.view != "hidden" && !l.filtered()}
 	for k := range l.scope {
 		page.Hidden[k] = l.scope.Get(k)
 	}
@@ -431,10 +457,10 @@ func (s *Server) pageEntries(w http.ResponseWriter, r *http.Request) {
 		page.Feed, page.Saved, page.SaveURL = nil, true, q.Get("save")
 	}
 	if next := cursor(entries, f); next != "" {
-		more := url.Values{"view": {l.view}, "before": {next}, "partial": {"1"}}
-		if f.Query != "" {
-			more.Set("q", f.Query)
-		}
+		more := l.picked()
+		more.Set("view", l.view)
+		more.Set("before", next)
+		more.Set("partial", "1")
 		page.More = l.link(more)
 	}
 	if q.Get("partial") != "" {
@@ -519,7 +545,7 @@ func (s *Server) pageSave(w http.ResponseWriter, r *http.Request) {
 type viewTab struct {
 	Label, URL string
 	Active     bool
-	Count      int64 // articles this view holds in the current scope and search
+	Count      int64 // articles this view holds in the current scope, search and period
 }
 
 type entryPage struct {

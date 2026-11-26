@@ -3,6 +3,8 @@
 {{end}}{{end}}{{end}}
 
 {{define "content"}}{{with .Page}}
+{{/* What a search or a period changes is swapped in place while the form stays (see app.js): #lead, #views, #results and #menus. */}}
+<div id="lead">
 {{if and .Notice $.Broken}}
 {{/* Shown unless this exact set of outages was dismissed on this device (see app.js). */}}
 <div class="notice" id="outage" hidden data-key="{{range $.Broken}}{{.ID}}@{{deref .FailingSince}} {{end}}">
@@ -31,6 +33,7 @@
   {{end}}
 </ul>
 {{end}}
+</div>
 {{if .Saved}}
 {{/* An address handed over by "Share" is saved at once (see app.js). */}}
 <form class="card row" data-action="save-article"{{if .SaveURL}} data-auto{{end}}>
@@ -40,19 +43,26 @@
 {{end}}
 <div class="filters">
   {{if .HiddenView}}<p class="hint">Hidden articles stay out of every list, count and export. They can be shown again from here.</p>{{end}}
-  {{if .Tabs}}<div class="segmented" role="tablist">
+  {{if .Tabs}}<div class="segmented" id="views" role="tablist">
     {{range .Tabs}}<a href="{{.URL}}" role="tab" class="{{if .Active}}on{{end}}">{{.Label}}{{if .Count}}<b>{{.Count}}</b>{{end}}</a>{{end}}
   </div>{{end}}
   <form class="search" action="/" method="get" role="search">
     {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
     {{icon "search"}}<input type="search" name="q" value="{{.Query}}" placeholder="Search titles and summaries" aria-label="Search">
+    <select name="period" aria-label="Published"{{if .Period}} class="on"{{end}}>
+      <option value="">Any time</option>
+      {{range .Periods}}<option value="{{.Name}}"{{if eq .Name $.Page.Period}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
   </form>
 </div>
+<div id="results">
 {{if .Entries}}
 <ul class="list entries" id="entries">{{template "items" .}}</ul>
 {{else}}
 <p class="empty">{{.Empty}}</p>
 {{end}}
+</div>
+<div id="menus">
 <div id="row-menu" class="menu" popover role="menu">
   <button role="menuitem" data-action="row-read">{{icon "check"}}<span>Mark as read</span></button>
   {{if .CanMark}}<button role="menuitem" data-action="read-through" data-feed="{{.FeedID}}"{{if .Category}} data-category="{{.Category}}"{{end}}{{if .ByArrival}} data-order="arrival"{{end}}>{{icon "checks"}}<span>{{if .ByArrival}}Mark this and below as read{{else}}Mark this and older as read{{end}}</span></button>{{end}}
@@ -75,6 +85,7 @@
   <a role="menuitem" href="/api/v1/readlists/{{.ID}}/export?format=md" download>{{icon "download"}}<span>Export as Markdown</span></a>{{end}}
 </div>
 {{end}}
+</div>
 {{if .Feed}}{{template "feed-dialog" .Categories}}{{end}}
 {{if .List}}
 <dialog id="list-dialog" class="sheet">

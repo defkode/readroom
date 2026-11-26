@@ -165,12 +165,14 @@ window.readroomBoot = (signal, soft) => {
   // The notice about feeds that stopped updating can be put away on this device;
   // it comes back when the set of failing feeds changes.
   const outageKey = 'readroom:outage';
-  const outage = document.getElementById('outage');
-  if (outage) {
+  const showOutage = () => {
+    const outage = document.getElementById('outage');
+    if (!outage) return;
     let dismissed = null;
     try { dismissed = localStorage.getItem(outageKey); } catch { /* always shown */ }
     outage.hidden = dismissed === outage.dataset.key;
-  }
+  };
+  showOutage();
 
   // Hiding puts an article out of every list for good; the row goes at once and
   // the message that follows can bring it back.
@@ -563,19 +565,61 @@ window.readroomBoot = (signal, soft) => {
     } catch (err) { toast(err.message); }
   });
 
-  // Clearing the search box (the field's own "x", or deleting the text) brings the
-  // full list back straight away instead of waiting for Enter.
-  on(document, 'input', (e) => {
-    const el = e.target;
-    if (el.type !== 'search' || el.name !== 'q' || el.value !== '') return;
-    if (new URLSearchParams(location.search).get('q')) el.form.requestSubmit();
-  });
-
-  // An empty search is no search: keep "q=" out of the address.
-  on(document, 'submit', (e) => {
-    const q = e.target.elements && e.target.elements.q;
-    if (q && q.type === 'search' && q.value.trim() === '') q.disabled = true;
-  });
+  // ---- search and period -------------------------------------------------------
+  // A list is filtered where it stands: the page for the new search is fetched and
+  // its list, tabs and menus take the place of the ones shown. The form itself is
+  // never replaced, so the field keeps its focus, its caret and a phone its
+  // keyboard. Typing filters after a second's pause; Enter, emptying the field
+  // and choosing a period filter at once.
+  const filterForm = document.querySelector('form.search');
+  if (filterForm) {
+    const picked = () => filterForm.q.value.trim() + '\n' + filterForm.period.value;
+    let shown = picked(), timer, turn = 0;
+    const filter = async () => {
+      clearTimeout(timer);
+      const want = picked();
+      if (want === shown) return filterForm.classList.remove('busy');
+      const params = new URLSearchParams(new FormData(filterForm));
+      // An empty search is no search: keep "q=" and "period=" out of the address.
+      for (const name of ['q', 'period']) if (!params.get(name).trim()) params.delete(name);
+      const url = '/?' + params;
+      const mine = ++turn;
+      filterForm.classList.add('busy');
+      try {
+        const res = await fetch(url, { signal });
+        if (res.status === 401) { location.href = '/login'; return; }
+        if (!res.ok) throw new Error(`Search failed (${res.status})`);
+        const fresh = new DOMParser().parseFromString(await res.text(), 'text/html');
+        if (mine !== turn || signal.aborted) return; // overtaken by a later search, or the page is gone
+        for (const part of ['#lead', '#views', '#results', '#menus', '.topbar .actions']) {
+          const from = fresh.querySelector(part), to = document.querySelector(part);
+          if (from && to) to.replaceWith(document.adoptNode(from));
+        }
+        showOutage();
+        filterForm.period.classList.toggle('on', filterForm.period.value !== '');
+        history.replaceState(history.state, '', url);
+        shown = want;
+      } catch (err) {
+        if (!signal.aborted) toast(err.message);
+      } finally {
+        if (mine === turn) filterForm.classList.remove('busy');
+      }
+    };
+    on(filterForm.q, 'input', () => {
+      clearTimeout(timer);
+      if (filterForm.q.value.trim() === '') return filter();
+      filterForm.classList.toggle('busy', picked() !== shown);
+      timer = setTimeout(filter, 1000);
+    });
+    on(filterForm.period, 'change', filter);
+    on(filterForm, 'submit', (e) => {
+      e.preventDefault();
+      filterForm.q.blur(); // Enter ends the typing: a phone puts its keyboard away
+      filter();
+    });
+    // Not on(): a listener tied to the signal is taken away before the signal reports its end.
+    signal.addEventListener('abort', () => clearTimeout(timer));
+  }
 
   // Display preferences apply immediately and are stored on this device.
   on(document, 'click', (e) => {
@@ -920,7 +964,7 @@ window.readroomBoot = (signal, soft) => {
       if (next) setCursor(next);
       return hideRow(row);
     },
-    '/': () => document.querySelector('.search input').focus(),
+    '/': () => document.querySelector('.search input[type=search]').focus(),
   };
   listKeys.o = listKeys.Enter;
   const articleKeys = {

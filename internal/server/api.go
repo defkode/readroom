@@ -362,6 +362,7 @@ func entryFilter(q url.Values) store.EntryFilter {
 		Hidden: q.Get("hidden") == "true", InProgress: q.Get("reading") == "true",
 		Query: q.Get("q"), Before: q.Get("before"), Oldest: q.Get("order") == "asc", ByArrival: q.Get("order") == "arrival",
 	}
+	f.Since = periodStart(q.Get("period"), time.Now())
 	f.FeedID, _ = strconv.ParseInt(q.Get("feed_id"), 10, 64)
 	f.ReadlistID, _ = strconv.ParseInt(q.Get("readlist_id"), 10, 64)
 	f.Limit, _ = strconv.Atoi(q.Get("limit"))
@@ -378,6 +379,29 @@ func entryFilter(q url.Values) store.EntryFilter {
 		f.HasSummary = &v
 	}
 	return f
+}
+
+// periods are the spans of publication dates a list can be narrowed to, as the
+// "period" parameter names them and as the web app offers them.
+var periods = []struct{ Name, Label string }{{"today", "Today"}, {"week", "Last week"}, {"month", "Last month"}}
+
+// periodStart is the time a period reaches back to, as timestamps are stored;
+// empty for no period or one it does not know. Today begins at midnight on the
+// server's clock, the one the dates in lists are shown by.
+func periodStart(period string, now time.Time) string {
+	now = now.Local()
+	var from time.Time
+	switch period {
+	case "today":
+		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	case "week":
+		from = now.AddDate(0, 0, -7)
+	case "month":
+		from = now.AddDate(0, -1, 0)
+	default:
+		return ""
+	}
+	return from.UTC().Format(store.TimeFormat)
 }
 
 // cursor is where the next page starts: the last entry's place in the list's order.

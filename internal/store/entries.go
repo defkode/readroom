@@ -177,6 +177,7 @@ type EntryFilter struct {
 	HasSummary *bool
 	InProgress bool   // begun but not finished, see ReadingFrom and ReadingTo
 	Query      string // substring match on title and summary
+	Since      string // published at this time or later (TimeFormat); empty for any time
 	Before     string // pagination cursor: "published_at,id" of the last item seen
 	Limit      int
 	Oldest     bool // oldest first instead of newest first
@@ -228,6 +229,9 @@ func (f EntryFilter) conditions() (where []string, args []any) {
 		} else {
 			add("e.summary = ''")
 		}
+	}
+	if f.Since != "" {
+		add("e.published_at >= ?", f.Since)
 	}
 	if q := strings.TrimSpace(f.Query); q != "" {
 		like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q) + "%"
