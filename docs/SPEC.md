@@ -9,7 +9,7 @@ A personal, self-hosted RSS/Atom reader for one person.
 
 Goals, in the owner's words at the start of the project:
 
-- self-hosted on a small NAS (QNAP Container Station) or Proxmox
+- self-hosted on a small home server
 - very light
 - manages only the owner's feed collection — no social features, no discovery, no accounts
 - a web UI for phone, tablet and desktop, used as an installed web app
@@ -34,7 +34,7 @@ One static Go binary and one SQLite file.
 
 | Part | Choice | Reason |
 |---|---|---|
-| Language | Go, `CGO_ENABLED=0` | cross-compiles to the NAS's arm64 with no toolchain on the target; tens of MB of RAM |
+| Language | Go, `CGO_ENABLED=0` | cross-compiles to arm64 with no toolchain on the target; tens of MB of RAM |
 | Storage | SQLite (WAL) via `modernc.org/sqlite` | pure Go, no separate database container |
 | HTTP | standard library `net/http` | nothing more is needed |
 | Feeds | `gofeed` | RSS, Atom and JSON Feed |
@@ -531,24 +531,20 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 ## 7. Deployment
 
 - **Image:** multi-stage build to a distroless static image, about 32 MB, around 16 MB of RAM idle.
-- **The owner's installation:** a small arm64 QNAP, as the Container Station application in
-  `deploy/qnap-compose.yaml` — the app plus its own Tailscale node, reachable only inside the tailnet
-  over HTTPS. No port is published on the NAS. Data lives on a NAS share covered by the volume's
-  snapshots. The specifics of that installation (addresses, which version runs there) are kept in
-  the owner's own runbook, not in this repository.
-- **Token on the QNAP:** set directly as `READROOM_TOKEN` in the application's YAML and kept in the
-  owner's password manager. The token-file option is not used there, because a file written by the
-  container is root-only on the share and File Station cannot open it. The repository's
-  `deploy/qnap-compose.yaml` carries a `CHANGE_ME` placeholder; the real value is never committed.
+- **An example installation** is `deploy/tailscale-compose.yaml`: the app plus its own Tailscale
+  node, reachable only inside the tailnet over HTTPS, with no port published on the host. Where and
+  how the owner's own instance runs is not recorded in this repository.
+- **Token:** `READROOM_TOKEN`, or `READROOM_TOKEN_FILE` to have one generated into the data volume
+  on first start. A real value is never committed.
 - **Updates are pulled, when the owner chooses:** a push to `main` that changes more than
   documentation runs the tests and publishes
   `ghcr.io/defkode/readroom` for arm64 and amd64 (`:latest`, and `:sha-<commit>` to go back to; a
-  `v*` tag adds a version tag). On the NAS, recreating the application pulls the newest image —
-  nothing updates by itself. The repository and the package are public, so the NAS pulls without a
-  login. `make image-qnap` remains as the offline route: an archive in the classic
-  `docker save` layout, the only one Container Station imports. Data survives updates; migrations
-  run forward only, so going back to an older image after a schema change means restoring the
-  database from a snapshot.
+  `v*` tag adds a version tag). Nothing updates by itself: an installation pulls the newest image
+  when it is recreated. The repository and the package are public, so pulling needs no login.
+  `make image-multiarch` and `make image-arm64-classic` remain as the offline route (the latter an
+  archive in the classic `docker save` layout, for importers that reject the OCI one). Data survives
+  updates; migrations run forward only, so going back to an older image after a schema change means
+  restoring the database from a backup.
 - Development needs only Docker: every `make` target runs the Go toolchain in a container.
 
 ## 8. Decisions (2026-11-10)
@@ -556,12 +552,12 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Decision | Why |
 |---|---|
 | Build Readroom instead of using Folo or Miniflux | Folo cannot be self-hosted or use a local model; Miniflux lacks readlists, EPUB and single-file backup and needs Postgres |
-| Go, SQLite, one binary | light enough for a 2 GB ARM NAS; one container, one file to back up |
+| Go, SQLite, one binary | light enough for a 2 GB ARM machine; one container, one file to back up |
 | Images stored as blobs in the same database | the collection really is one file; revisit only if images grow to many gigabytes |
 | Server never calls a model; summaries come through the API | the reader stays independent of which model is used and where it runs |
 | AI summaries are set per feed, on for a new one, with a length threshold | the owner wants a summary nearly everywhere, so turning it off is the exception; short notes and comics are skipped by length |
 | A dedicated queue endpoint that returns ready plain text | a script or agent needs one request and no HTML parsing |
-| Summariser pulls one article at a time, checking every 5 minutes, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the NAS is too small to run a model |
+| Summariser pulls one article at a time, checking every 5 minutes, from the desktop with the local model | no work is held locally, an interrupted run loses nothing, and the server is too small to run a model |
 | One `readroom worker` with one file replaces the per-queue timers, flags and environment file | the loose units worked, but setting them up meant copying four files and editing commands inside them; anyone else running Readroom needs one thing to configure, one to check and one to install |
 | Every push to `main` publishes the binary for Linux and macOS as one release that moves forward (`rolling`) | somebody setting up a worker needs a file to download, not a toolchain; there are no version numbers here to cut releases by, and one address that always holds the newest build keeps the instructions to a single command |
 | The worker is a command of the same binary, not a separate program | one thing to build, release and keep in step with the API; the size is no burden on a desktop |
@@ -576,14 +572,14 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Next and previous article come from the list as the browser showed it, kept per tab | an article has no order of its own; a server-side "next unread" would skip what was just read and could not tell which list the reader came from |
 | Articles expire per feed after a year by default, with "forever" as a choice (after HEY's per-contact recycling) | the database would otherwise only grow; what is worth keeping is starred, put in a readlist or given a local copy, and those never expire |
 | Light and dark themes are neutral greys with a blue accent; the warm sepia theme was removed (2026-11-15) | the owner disliked the brown, paper-like palette and prefers macOS-style greys; a device that had sepia chosen falls back to following the system |
-| Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on the NAS every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
+| Stylesheet and scripts are linked by a content version and cached for good; text responses are gzipped | on a small server every page view re-downloaded 55 KB of assets and an uncompressed 64 KB page through the Tailscale proxy, about half a second per click |
 | A feed is reported as broken only after 3 failed fetches in a row, on the Unread list rather than only in Manage feeds | one timeout is not news; and the place the owner looks every day is the only place a silent failure gets noticed |
 | Adding a feed validates first and finds the feed from a page address | a mistyped address used to leave a dead feed behind, and guessing `/feed.xml` by hand was the common way to mistype |
 | Unwanted articles are hidden, not deleted, and hiding touches nothing else | a deleted article would come back as new on the next fetch; leaving its star and readlists alone makes "Show again" an exact undo |
 | Unread is ordered by arrival, not publication, and a new feed brings only its recent articles as unread | in publication order a new feed's backlog was scattered deep in the list and missed; in arrival order a whole backlog would push everything else down |
 | Teaser-only feeds are detected by reading two article pages, not guessed from length | short posts are common and complete (notes, quotes, comics); only the page can tell an opening line from the whole text |
 | Article text lives in its own table, and the Unread indexes hold unread rows only | every list had to step over each article's HTML to read its flags; and over time nearly everything is read, so an index of what is not stays small |
-| Articles are read aloud on request only, by a client outside the server, through a queue like the summaries' | speech for every article would be made mostly for nothing; and the NAS is too small for a model, while the desktop makes 13 minutes of speech in 10 seconds |
+| Articles are read aloud on request only, by a client outside the server, through a queue like the summaries' | speech for every article would be made mostly for nothing; and the server is too small for a model, while the desktop makes 13 minutes of speech in 10 seconds |
 | AI clean-up asks the model which blocks belong and what they are, never for the text | a model that rewrites an article can shorten, rephrase or lose a paragraph, and nobody would notice in a reader; judging blocks cannot change a word, takes seconds instead of a minute, and gives an answer whose shape can be checked |
 | New articles of a feed with clean-up on are held until they have their clean copy (the owner's choice over a time limit) | the owner wants never to see an article that has not been through it; the price, accepted knowingly, is that nothing new from those feeds appears while the desktop is off |
 | A reported failure releases a held article | the alternative is an article that stays invisible for good because one model could not read it |
@@ -616,12 +612,11 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Everything embedded, enforced by CSP | the app must work on the local network with no internet |
 | Categories and the article's AI summary fold with plain `<details>`, and a few lines of script (`folds.js`) remember which | the browser already does the folding, with keyboard and accessibility; but every click loads a new page, which would unfold everything again |
 | Display settings stored per device, not on the server | the phone and the desktop want different type and theme; the same goes for whether the desktop sidebar is hidden |
-| Tailscale-only access on the NAS | no public IP at home; HTTPS is needed to install the web app on a phone |
-| Token set in the YAML on the QNAP rather than a readable file | the owner preferred keeping the generated file owner-only over loosening its permissions |
+| Tailscale-only access in the example installation | no public IP at home; HTTPS is needed to install the web app on a phone |
 | Manual updates for the first month | changes are batched during testing; a registry adds moving parts not yet needed |
-| Images are built by GitHub Actions and pulled from ghcr.io; the NAS still updates only when the application is recreated | building locally and carrying a 20 MB archive to a share for every update was the tedious part; pulling on demand keeps the NAS on a version the owner chose |
+| Images are built by GitHub Actions and pulled from ghcr.io; an installation still updates only when it is recreated | building locally and carrying a 20 MB archive to the server for every update was the tedious part; pulling on demand keeps an installation on a version its owner chose |
 | CI compiles the binaries on the runner and the image build only copies them in; the same Dockerfile still compiles by itself everywhere else | inside the image build every change recompiled everything for both platforms, most of a five-minute run; the runner keeps Go's build cache between runs |
-| The specifics of the owner's installation live in a private runbook, not here | the repository is public; an address or the deployed version helps nobody else and dates quickly |
+| Where and how the owner's instance runs is not recorded here at all | the repository is public; a host, an address or the deployed version helps nobody else and dates quickly |
 | MIT licence | the repository is public, and without a licence nobody else may use the code; MIT is the simplest permissive one for a small personal tool. The bundled font keeps its own Open Font License |
 | A clean copy ends with one list of the article's links, kept out of speech and translation | the owner lost minutes of a paid recording to a bibliography read out address by address; and whether an article indexes its links should not depend on its author |
 | Articles saved by address have AI clean-up on from the start | one saved by hand is one the owner means to read, often aloud; the same reasoning as for summaries |
@@ -629,17 +624,17 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | The period filter is three fixed spans in the search field, not a date range | the owner asked for today, last week, last month; a native select costs no extra row on a phone |
 | Feed settings ride in the OPML export as namespaced attributes, not in a format of our own | the owner moved their feeds to a second instance and lost every per-feed switch; OPML is extensible this way, and the file stays a plain feed list for any other reader |
 | Reset database asks for the word "reset" to be typed, in the sheet and in the API | the one action that destroys everything should not be one stray tap or one mistyped request away; the owner wanted it for starting a trial instance over |
-| Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
+| Testing phase: preview locally, deploy and commit only on request | the instance in use keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions
 
-- The NAS runs whatever image was newest when its application was last recreated; later commits run
+- An installation runs whatever image was newest when it was last recreated; later commits run
   locally only until then.
-- **Local network without internet:** the NAS installation is reachable only through its Tailscale
-  address, and whether that keeps working during an internet outage has not been tested. Publishing
-  port 8090 on the NAS as well would settle it.
+- **Local network without internet:** an installation reachable only through a Tailscale address
+  may not answer during an internet outage; this has not been tested. Publishing port 8090 on the
+  local network as well settles it.
 - Summaries are produced only while the owner's desktop is on: the worker and the model run there,
-  not on the NAS.
+  not on the server.
 - Recordings are made only while the owner's desktop is on, like summaries; a request made meanwhile
   waits (up to 30 days).
 - The bundled free text-to-speech script is English only, and mispronounces some names and unusual
@@ -672,7 +667,7 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 - The reading position is one per article, not per device: the last report wins (or the furthest,
   while the question to continue is unanswered). It is not kept for the listening player.
 - Search is substring matching over title, summary and excerpt — no full-text search of article bodies.
-- No off-site backup of the NAS data yet.
+- No off-site backup yet.
 
 ## 10. Later
 

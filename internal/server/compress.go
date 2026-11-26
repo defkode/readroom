@@ -10,7 +10,7 @@ import (
 
 // compress gzips text responses (pages, JSON, the stylesheet and scripts) for
 // clients that accept it. A list page shrinks to about a sixth, which matters
-// on the NAS, where every response also passes through the Tailscale proxy.
+// on a small server, more so where every response also passes through a proxy.
 func compress(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {

@@ -134,7 +134,7 @@ func (s *Server) Handler() http.Handler {
 // assetVersion changes whenever any embedded static file does. Pages link the
 // stylesheet and scripts with it in the address (see the "static" template
 // function), so a browser keeps them for good and still picks up a new release
-// at once. Without it every page view fetched them again, which is felt on the NAS.
+// at once. Without it every page view fetched them again, which is felt on a small server.
 var assetVersion = func() string {
 	h := sha256.New()
 	fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {

@@ -7,7 +7,7 @@ GO       := docker run --rm --user $(shell id -u):$(shell id -g) \
 
 VERSION  := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: build install test vet tidy run image image-multiarch image-qnap
+.PHONY: build install test vet tidy run image image-multiarch image-arm64-classic
 
 build: ## static binary at bin/readroom (runs on the host too)
 	@mkdir -p $(CACHE) bin
@@ -38,12 +38,12 @@ run: build ## run locally on :8090 with ./readroom.db, no token
 image:
 	docker build -t readroom:latest .
 
-image-multiarch: ## amd64 + arm64, written to dist/ as OCI archives for loading on the NAS
+image-multiarch: ## amd64 + arm64, written to dist/ as OCI archives, to load where the registry is out of reach
 	@mkdir -p dist
 	docker buildx build --platform linux/amd64 -t readroom:latest -o type=docker,dest=dist/readroom-amd64.tar .
 	docker buildx build --platform linux/arm64 -t readroom:latest -o type=docker,dest=dist/readroom-arm64.tar .
 
-image-qnap: ## arm64 archive in the classic "docker save" layout, which Container Station's importer requires
+image-arm64-classic: ## arm64 archive in the classic "docker save" layout, for importers that reject the OCI one
 	@mkdir -p dist
 	docker buildx build --platform linux/arm64 -t readroom:latest -o type=docker,dest=dist/readroom-arm64-oci.tar .
 	@rm -f dist/readroom-arm64.tar

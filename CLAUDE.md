@@ -10,7 +10,7 @@ when behaviour changes; add new decisions to the table in SPEC §8.
 - **Go may not be installed on the host.** Every `make` target runs the toolchain in Docker
   (`golang:1.27-alpine`, caches in `~/.cache/readroom-go`). Use `make build`, `make test`, `make vet`.
 - **Preview locally, don't deploy.** During the testing phase the owner wants to see changes on a
-  locally running server, and wants commits, pushes and NAS deployments only when asked.
+  locally running server, and wants commits, pushes and deployments only when asked.
   `make run` serves on `127.0.0.1:8090` with `./readroom.db` (git-ignored) and no token.
   Port 8080 is taken on the owner's machine.
 - **Everything must be embedded.** No fonts, scripts or styles from other hosts — the app has to work
@@ -28,38 +28,28 @@ when behaviour changes; add new decisions to the table in SPEC §8.
   Derived columns are recomputed by `backfillText` when a migration resets `text_length` to -1.
 - The owner writes in Polish; code, comments, commit messages and these documents are in English.
 
-## Deployment (QNAP, when asked)
+## Deployment (when asked)
 
-The repository is public. The specifics of the owner's installation — addresses, the deployed
-version, which model summarises — belong in their private runbook
-(`~/Documents/qnap-databox-runbook.md`, section "Readroom"), not in this repository. Update it there
-after a deployment.
+The repository is public: it must not say where or how the owner's own instance runs — no host,
+hardware, address, deployed version or model names. That lives in the owner's private notes outside
+this repository; update it there after a deployment, and keep such details out of code comments,
+documents and commit messages here.
 
-1. Push to `main` (when asked). Unless only documentation or the compose file changed,
-   `.github/workflows/image.yml` runs the tests and publishes
-   `ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`, and then the bare binaries for worker
-   machines as the release tagged `rolling` (the README's download address points at it); wait for the run to go green
-   (`gh run watch`).
-2. Container Station → Applications → `readroom` → recreate with `deploy/qnap-compose.yaml`, which
-   pulls the new image. Replace `CHANGE_ME` with the real token in the editor — the owner pastes it;
-   it lives in their password manager and must never be committed or echoed.
-3. Check `https://readroom.<tailnet>.ts.net/healthz`.
-
-Without the registry: `make image-qnap` → `dist/readroom-arm64.tar`, import it under Container Station
-→ Images, and run it with `image: readroom:latest` and `pull_policy: never`. Container Station rejects
-the buildx OCI layout ("invalid file format"); the target converts to the classic `docker save` layout.
+What the repository does say is how anyone gets a build: a push to `main` (when asked), unless only
+documentation changed, makes `.github/workflows/image.yml` run the tests and publish
+`ghcr.io/defkode/readroom:latest` plus `:sha-<commit>`, and then the bare binaries for worker
+machines as the release tagged `rolling` (the README's download address points at it). Wait for the
+run to go green (`gh run watch`) before deploying, then check `/healthz` on the instance.
+`deploy/tailscale-compose.yaml` is an example of running it behind a Tailscale node.
 
 Gotchas learned the hard way:
 
-- The Tailscale container waits only **60 seconds** for its login link to be approved, then restarts
-  with a new link. Take the newest link from the container log and have the owner click Connect
-  immediately; a late click leaves a dead machine in the tailnet that must be removed.
-- A token file written by the container is root-only on the NAS share and cannot be downloaded through
-  File Station — hence `READROOM_TOKEN` in the YAML there.
-- The service inside the compose network is named `app`, not `readroom`: the Tailscale container's own
-  hostname is `readroom` and would shadow it.
-- The owner prefers to perform Tailscale account actions (removing machines, approving logins)
-  themselves unless they hand one over explicitly.
+- A Tailscale container waits only **60 seconds** for its login link to be approved, then restarts
+  with a new link. Take the newest link from the container log and approve it immediately; a late
+  click leaves a dead machine in the tailnet that must be removed.
+- The service inside the compose network is named `app`, not `readroom`: the Tailscale container's
+  own hostname is `readroom` and would shadow it.
+- A token must never be committed or echoed.
 
 ## Summaries
 

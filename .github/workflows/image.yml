@@ -1,11 +1,11 @@
-# Builds the image the QNAP runs and publishes it to the GitHub Container Registry,
-# so the NAS updates by pulling instead of importing an archive copied to a share.
+# Builds the image and publishes it to the GitHub Container Registry, so that an
+# installation updates by pulling it.
 #
 #   push to main  ->  ghcr.io/<owner>/readroom:latest  and  :sha-<commit>
 #   tag v1.2.3    ->  :1.2.3  and  :sha-<commit>
 #   run by hand   ->  :sha-<commit>  (plus :latest when run on main)
 #
-# deploy/qnap-compose.yaml points at :latest; a :sha-… or version tag is there to go back to.
+# deploy/tailscale-compose.yaml points at :latest; a :sha-… or version tag is there to go back to.
 #
 # A push to main also publishes the same binary by itself, for the computers that run
 # "readroom worker": the release tagged "rolling" always holds the newest build, at
@@ -17,7 +17,7 @@ on:
     branches: [main]
     tags: ['v*']
     # A push that only touches documentation or the deployment notes changes nothing in the image.
-    paths-ignore: ['**.md', 'docs/**', 'deploy/qnap-compose.yaml']
+    paths-ignore: ['**.md', 'docs/**', 'deploy/tailscale-compose.yaml']
   workflow_dispatch:
 
 permissions:
@@ -75,7 +75,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # arm64 for the QNAP, amd64 for Proxmox. The "build" context replaces the
+      # arm64 and amd64. The "build" context replaces the
       # Dockerfile's compile stage with the binaries built above, so all that is
       # left is copying them onto the base image. No provenance attestation: it
       # turns the manifest into an index with extra entries that older Docker

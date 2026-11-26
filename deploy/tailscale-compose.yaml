@@ -1,15 +1,17 @@
-# Container Station application for the QNAP: Readroom behind its own Tailscale
-# node, served at https://readroom.<tailnet>.ts.net. No ports are published on the NAS.
+# An example: Readroom behind its own Tailscale node, served over HTTPS at
+# https://readroom.<tailnet>.ts.net with no port published on the host.
 #
 # The image is built by GitHub Actions (.github/workflows/image.yml) and pulled from
-# the GitHub Container Registry; recreating the application fetches the newest one.
-# The package is public, so the NAS pulls it without a login. To pin or go back,
-# replace ":latest" with a ":sha-<commit>" or version tag.
+# the GitHub Container Registry; "docker compose pull && docker compose up -d" fetches
+# the newest one. To pin or go back, replace ":latest" with a ":sha-<commit>" or
+# version tag.
+#
 # On first start, open the tailscale container's log and follow the newest login
 # link within 60 seconds (the container restarts with a fresh link after that).
 #
-# Replace CHANGE_ME below with your own token (openssl rand -hex 24) in Container
-# Station's editor, and keep it in a password manager. Never commit the real value.
+# The access token is generated on first start into the data volume, as the file
+# "token". To choose your own, set READROOM_TOKEN instead (openssl rand -hex 24)
+# and keep it out of version control.
 services:
   tailscale:
     image: tailscale/tailscale:latest
@@ -21,8 +23,7 @@ services:
       - TS_ENABLE_HEALTH_CHECK=true
       - TS_LOCAL_ADDR_PORT=127.0.0.1:9002
     volumes:
-      - /share/Container/readroom-ts/state:/var/lib/tailscale
-      - /share/Container/readroom-ts/config:/config
+      - tailscale-state:/var/lib/tailscale
     command:
       - sh
       - -c
@@ -38,20 +39,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: always
+    restart: unless-stopped
   # Named "app", not "readroom": the tailscale container's own hostname is
   # "readroom", which would shadow the service name in its DNS lookups.
   app:
     image: ghcr.io/defkode/readroom:latest
     pull_policy: always
-    user: "0:0" # the bind-mounted share is not writable by the image's default user
     environment:
-      # Set directly rather than through READROOM_TOKEN_FILE: a token file written by
-      # the container is root-only on the share, and File Station cannot open it.
-      - READROOM_TOKEN=CHANGE_ME
+      - READROOM_TOKEN_FILE=/data/token
       - READROOM_INTERVAL=30m
       # Optional: your own language, to have articles translated into it on request.
       # - READROOM_LANGUAGE=pl
     volumes:
-      - /share/Container/readroom:/data
-    restart: always
+      - readroom-data:/data
+    restart: unless-stopped
+
+volumes:
+  readroom-data:
+  tailscale-state:

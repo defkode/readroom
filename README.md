@@ -35,11 +35,11 @@ Without Docker on the target: `make build` produces `bin/readroom` (static, no d
 | `READROOM_LOG` | `info` | `debug` logs every request |
 | `READROOM_LANGUAGE` | *(none)* | your own language, e.g. `pl`: lets an article be [translated](#translation) into it on request. Optional; without it nothing about translation appears |
 
-For Proxmox (amd64), `make image-multiarch` writes loadable image archives to `dist/`.
-For the QNAP, every push to `main` publishes `ghcr.io/defkode/readroom:latest` (arm64 and amd64) from
-`.github/workflows/image.yml`, and `deploy/qnap-compose.yaml` is the application definition that pulls
-it (Readroom behind its own Tailscale HTTPS node). `make image-qnap` still builds an arm64 archive
-that Container Station can import, for when the registry is out of reach.
+Every push to `main` publishes `ghcr.io/defkode/readroom:latest` (arm64 and amd64) from
+`.github/workflows/image.yml`. `deploy/tailscale-compose.yaml` is an example that pulls it and puts
+Readroom behind its own Tailscale HTTPS node. Where the registry is out of reach,
+`make image-multiarch` writes loadable image archives to `dist/`, and `make image-arm64-classic` an
+arm64 one in the classic `docker save` layout for importers that reject the OCI one.
 
 ## The worker: clean-up, summaries, listening and translation
 
@@ -405,7 +405,7 @@ internal/store      SQLite schema and queries
 internal/fetch      feed polling, article preservation
 internal/export     EPUB and Markdown
 internal/server     REST API, web app (templates/, static/)
-deploy              NAS compose file, a text-to-speech script
+deploy              an example compose file, a text-to-speech script
 ```
 
 `make test` runs the suite (toolchain in Docker; Go is not needed on the host).

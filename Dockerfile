@@ -1,4 +1,4 @@
-# Multi-arch (amd64 for Proxmox, arm64 for the QNAP): the build stage always runs
+# Multi-arch (amd64 and arm64): the build stage always runs
 # natively and cross-compiles, so no emulation is needed.
 #
 # CI compiles the binaries on the runner instead, where the Go build cache
