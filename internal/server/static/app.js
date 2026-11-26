@@ -473,6 +473,12 @@ window.readroomBoot = (signal, soft) => {
       await api('PATCH', `/readlists/${form.dataset.id}`, { name: form.name.value });
       readroomNav.reload();
     },
+    // The field's pattern has already held the form back unless it says "reset".
+    async 'reset-database'(form) {
+      await api('POST', '/reset', { confirm: form.confirm.value });
+      try { sessionStorage.clear(); } catch { /* nothing kept then */ } // lists and undo offers of articles that are gone
+      readroomNav.go('/feeds');
+    },
     async 'create-list'(form) {
       const list = await api('POST', '/readlists', { name: form.name.value });
       if (form.dataset.id) await api('PUT', `/readlists/${list.id}/entries/${form.dataset.id}`);

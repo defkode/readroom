@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
@@ -801,20 +802,98 @@ func (s *Server) apiExportDB(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Now(), f)
 }
 
+// apiReset empties the database. It is the one request that destroys everything,
+// so it has to say so: {"confirm": "reset"}.
+func (s *Server) apiReset(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&in); err != nil || in.Confirm != "reset" {
+		writeError(w, http.StatusBadRequest, `this deletes everything; send {"confirm": "reset"} to go ahead`)
+		return
+	}
+	// Not under the request's context: once begun it should finish even if the page is closed.
+	if err := s.Fetcher.Paused(func() error { return s.Store.Reset(context.Background()) }); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.Log.Warn("database reset: every feed and article deleted")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type opml struct {
 	XMLName xml.Name      `xml:"opml"`
 	Version string        `xml:"version,attr"`
+	NS      string        `xml:"xmlns:readroom,attr,omitempty"` // written only; see opmlNS
 	Title   string        `xml:"head>title"`
 	Body    []opmlOutline `xml:"body>outline"`
 }
 
 type opmlOutline struct {
-	Text     string        `xml:"text,attr"`
-	Title    string        `xml:"title,attr,omitempty"`
-	Type     string        `xml:"type,attr,omitempty"`
-	XMLURL   string        `xml:"xmlUrl,attr,omitempty"`
-	HTMLURL  string        `xml:"htmlUrl,attr,omitempty"`
+	Text    string `xml:"text,attr"`
+	Title   string `xml:"title,attr,omitempty"`
+	Type    string `xml:"type,attr,omitempty"`
+	XMLURL  string `xml:"xmlUrl,attr,omitempty"`
+	HTMLURL string `xml:"htmlUrl,attr,omitempty"`
+	// Every other attribute; a feed's settings travel here, see feedFlags.
+	Extra    []xml.Attr    `xml:",any,attr"`
 	Outlines []opmlOutline `xml:"outline"`
+}
+
+// opmlNS is the namespace of the attributes that carry a feed's settings in an
+// OPML file, as OPML asks of anything it does not define: readroom:aiSummary,
+// readroom:aiCleanup, readroom:preserve, readroom:preserveSince and
+// readroom:keepDays. Other readers ignore them.
+const opmlNS = "https://github.com/defkode/readroom"
+
+// feedFlags writes a feed's settings as those attributes.
+func feedFlags(f *store.Feed) []xml.Attr {
+	flag := func(name, value string) xml.Attr {
+		return xml.Attr{Name: xml.Name{Local: "readroom:" + name}, Value: value}
+	}
+	flags := []xml.Attr{
+		flag("aiSummary", strconv.FormatBool(f.AISummary)),
+		flag("aiCleanup", strconv.FormatBool(f.AICleanup)),
+		flag("preserve", strconv.FormatBool(f.Preserve)),
+	}
+	if f.PreserveSince != nil {
+		flags = append(flags, flag("preserveSince", *f.PreserveSince))
+	}
+	return append(flags, flag("keepDays", strconv.Itoa(f.KeepDays)))
+}
+
+// applyFlags sets on a feed the settings an outline carries. One that is absent
+// or makes no sense leaves the feed as it was: an import takes what it can.
+func applyFlags(f *store.Feed, attrs []xml.Attr) {
+	for _, a := range attrs {
+		// The prefix stands for the namespace when the file declares it, and for itself when not.
+		if a.Name.Space != opmlNS && a.Name.Space != "readroom" {
+			continue
+		}
+		switch a.Name.Local {
+		case "aiSummary", "aiCleanup", "preserve":
+			on, err := strconv.ParseBool(a.Value)
+			if err != nil {
+				continue
+			}
+			switch a.Name.Local {
+			case "aiSummary":
+				f.AISummary = on
+			case "aiCleanup":
+				f.AICleanup = on
+			case "preserve":
+				f.Preserve = on
+			}
+		case "preserveSince":
+			if since, err := parseSince(a.Value); err == nil {
+				f.PreserveSince = since
+			}
+		case "keepDays":
+			if days, err := strconv.Atoi(a.Value); err == nil && validKeepDays(days) {
+				f.KeepDays = days
+			}
+		}
+	}
 }
 
 func (s *Server) apiExportOPML(w http.ResponseWriter, r *http.Request) {
@@ -823,13 +902,13 @@ func (s *Server) apiExportOPML(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	doc := opml{Version: "2.0", Title: "readroom"}
+	doc := opml{Version: "2.0", NS: opmlNS, Title: "readroom"}
 	groups := map[string]int{}
 	for _, f := range feeds {
 		if f.Saved {
 			continue // not a subscription
 		}
-		o := opmlOutline{Text: f.Title, Title: f.Title, Type: "rss", XMLURL: f.URL, HTMLURL: f.SiteURL}
+		o := opmlOutline{Text: f.Title, Title: f.Title, Type: "rss", XMLURL: f.URL, HTMLURL: f.SiteURL, Extra: feedFlags(f)}
 		if f.Category == "" {
 			doc.Body = append(doc.Body, o)
 			continue
@@ -883,7 +962,9 @@ func (s *Server) apiImportOPML(w http.ResponseWriter, r *http.Request) {
 				if name == o.XMLURL {
 					name = ""
 				}
-				_, created, err := s.Store.CreateFeed(r.Context(), &store.Feed{URL: feedURL, CustomTitle: name, Category: category, AISummary: true, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent})
+				feed := &store.Feed{URL: feedURL, CustomTitle: name, Category: category, AISummary: true, KeepDays: store.DefaultKeepDays, InitialUnread: store.UnreadRecent}
+				applyFlags(feed, o.Extra)
+				_, created, err := s.Store.CreateFeed(r.Context(), feed)
 				if err == nil && created {
 					added++
 				} else {

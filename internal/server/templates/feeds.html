@@ -70,11 +70,26 @@
 
 <h2 class="section">Collection</h2>
 <ul class="list">
-  <li><label class="rowbtn">{{icon "plus"}}<span class="body"><span class="title">Import OPML</span><span class="sub">Subscribe to the feeds exported from another reader</span></span><input type="file" accept=".opml,.xml,text/xml" data-action="import-opml" hidden></label></li>
+  <li><label class="rowbtn">{{icon "plus"}}<span class="body"><span class="title">Import OPML</span><span class="sub">Subscribe to the feeds exported from another reader, or from Readroom</span></span><input type="file" accept=".opml,.xml,text/xml" data-action="import-opml" hidden></label></li>
   <li><a class="rowbtn" href="/?view=hidden">{{icon "hide"}}<span class="body"><span class="title">Hidden articles</span><span class="sub">Articles you put away; show them again from here</span></span>{{icon "chevron"}}</a></li>
-  <li><a class="rowbtn" href="/api/v1/export/opml" download>{{icon "download"}}<span class="body"><span class="title">Export OPML</span><span class="sub">Feed list only</span></span></a></li>
+  <li><a class="rowbtn" href="/api/v1/export/opml" download>{{icon "download"}}<span class="body"><span class="title">Export OPML</span><span class="sub">The feed list with each feed's settings, no articles</span></span></a></li>
   <li><a class="rowbtn" href="/api/v1/export/db" download>{{icon "download"}}<span class="body"><span class="title">Download everything</span><span class="sub">One SQLite file with all feeds, articles, images and readlists</span></span></a></li>
+  <li><button class="rowbtn danger" data-action="open-dialog" data-dialog="reset-dialog">{{icon "alert"}}<span class="body"><span class="title">Reset database</span><span class="sub">Delete every feed and article and start again from nothing</span></span></button></li>
 </ul>
+
+<dialog id="reset-dialog" class="sheet">
+  <form data-action="reset-database">
+    <h2>Reset database?</h2>
+    <p class="warning">{{icon "alert"}}<span>This deletes <b>everything</b> on this server: all feeds and their settings, all articles with what you read and starred, readlists, saved articles, local copies, AI summaries, translations and recordings.</span></p>
+    <p>It cannot be undone. If you might want any of it back, <a href="/api/v1/export/db" download>download everything</a> first — <a href="/api/v1/export/opml" download>the OPML export</a> keeps only the feed list and its settings.</p>
+    <p class="hint">Your access token and this device's display settings stay as they are.</p>
+    <label><span>Type <b>reset</b> to confirm</span><input name="confirm" required pattern="reset" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="buttons">
+      <button class="btn danger solid">Delete everything</button>
+      <button class="btn quiet" type="button" data-action="close-dialog">Cancel</button>
+    </div>
+  </form>
+</dialog>
 
 {{template "feed-dialog" .Page}}
 {{end}}

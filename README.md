@@ -186,7 +186,8 @@ All under `/api/v1`, JSON, `Authorization: Bearer $READROOM_TOKEN`.
 | `PUT/DELETE /readlists/{id}/entries/{entry}` | add / remove |
 | `GET /readlists/{id}/export?format=epub\|md` | one book, one chapter per article |
 | `GET /export/db` | consistent snapshot of the whole collection (SQLite) |
-| `GET /export/opml` · `POST /import/opml` | feed list in/out |
+| `POST /reset` | empties the database — every feed, article and readlist — leaving a fresh installation; refused without `{"confirm": "reset"}` |
+| `GET /export/opml` · `POST /import/opml` | feed list in/out, with each feed's settings as `readroom:` attributes (`aiSummary`, `aiCleanup`, `preserve`, `preserveSince`, `keepDays`); the import only adds feeds |
 
 ```sh
 curl -H "Authorization: Bearer $READROOM_TOKEN" -X PATCH localhost:8090/api/v1/entries/42 \

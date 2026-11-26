@@ -919,3 +919,95 @@ func TestImportKeepsRenames(t *testing.T) {
 		t.Errorf("feed imported under its own title: title %q, custom %q", f.Title, f.CustomTitle)
 	}
 }
+
+func TestOPMLCarriesFeedSettings(t *testing.T) {
+	post := func(a *app, doc string) {
+		t.Helper()
+		req, _ := http.NewRequest("POST", a.url+"/api/v1/import/opml", strings.NewReader(doc))
+		req.Header.Set("Authorization", "Bearer secret")
+		if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 200 {
+			t.Fatalf("import: %v %v", resp, err)
+		}
+	}
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>Any</title></channel></rss>`)
+	}))
+	defer site.Close()
+	// One feed with every setting away from its default, one left alone.
+	from := newApp(t)
+	from.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL+"/set.xml", "category": "News", "ai_summary": false,
+		"ai_cleanup": true, "preserve": true, "preserve_since": "2026-03-01", "keep_days": 0}, nil)
+	from.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL+"/plain.xml"}, nil)
+	exported, _ := io.ReadAll(from.call("GET", "/api/v1/export/opml", nil, nil).Body)
+	for _, want := range []string{`xmlns:readroom="` + opmlNS + `"`, `readroom:aiSummary="false"`, `readroom:preserveSince="2026-03-01T00:00:00Z"`, `readroom:keepDays="0"`} {
+		if !strings.Contains(string(exported), want) {
+			t.Fatalf("export lacks %s:\n%s", want, exported)
+		}
+	}
+
+	to := newApp(t)
+	post(to, string(exported))
+	// From elsewhere: no settings, settings that make no sense, and an undeclared prefix.
+	post(to, fmt.Sprintf(`<opml version="2.0"><body><outline text="Bare" xmlUrl="%[1]s/bare.xml"/>
+<outline text="Odd" xmlUrl="%[1]s/odd.xml" readroom:aiSummary="perhaps" readroom:keepDays="-4" readroom:aiCleanup="true" aiSummary="false"/></body></opml>`, site.URL))
+	var feeds []store.Feed
+	to.call("GET", "/api/v1/feeds", nil, &feeds)
+	got := map[string]store.Feed{}
+	for _, f := range feeds {
+		got[strings.TrimPrefix(f.URL, site.URL+"/")] = f
+	}
+	if f := got["set.xml"]; f.AISummary || !f.AICleanup || !f.Preserve || f.PreserveSince == nil || *f.PreserveSince != "2026-03-01T00:00:00Z" || f.KeepDays != 0 || f.Category != "News" {
+		t.Errorf("settings did not survive the round trip: %+v", f)
+	}
+	for _, name := range []string{"plain.xml", "bare.xml"} {
+		if f := got[name]; !f.AISummary || f.AICleanup || f.Preserve || f.PreserveSince != nil || f.KeepDays != store.DefaultKeepDays {
+			t.Errorf("%s should have the defaults: %+v", name, f)
+		}
+	}
+	if f := got["odd.xml"]; !f.AISummary || !f.AICleanup || f.KeepDays != store.DefaultKeepDays {
+		t.Errorf("odd.xml should take only the setting that makes sense: %+v", f)
+	}
+}
+
+func TestResetDatabase(t *testing.T) {
+	a, site := newApp(t), origin(t)
+	var feed store.Feed
+	a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml", "unread": "all"}, &feed)
+	a.call("POST", "/api/v1/readlists", map[string]any{"name": "Later"}, nil)
+	a.call("POST", "/api/v1/articles", map[string]any{"url": site.URL + "/hello"}, nil)
+
+	// Not without saying so.
+	for _, body := range []any{nil, map[string]any{}, map[string]any{"confirm": "yes"}} {
+		if resp := a.call("POST", "/api/v1/reset", body, nil); resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("reset with %v: got %d, want 400", body, resp.StatusCode)
+		}
+	}
+	var feeds []store.Feed
+	if a.call("GET", "/api/v1/feeds", nil, &feeds); len(feeds) == 0 {
+		t.Fatal("a refused reset deleted the feeds")
+	}
+
+	if resp := a.call("POST", "/api/v1/reset", map[string]any{"confirm": "reset"}, nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reset: got %d, want 204", resp.StatusCode)
+	}
+	var page struct{ Entries []store.Entry }
+	var lists []store.Readlist
+	a.call("GET", "/api/v1/entries", nil, &page)
+	a.call("GET", "/api/v1/readlists", nil, &lists)
+	a.call("GET", "/api/v1/feeds", nil, &feeds)
+	for _, f := range feeds {
+		if !f.Saved {
+			t.Errorf("feed %q survived the reset", f.URL)
+		}
+	}
+	if len(page.Entries) != 0 || len(lists) != 0 {
+		t.Errorf("after the reset: %d entries and %d readlists, want none", len(page.Entries), len(lists))
+	}
+	// And it works like a fresh installation: pages render, a feed can be added again.
+	if resp := a.call("GET", "/feeds", nil, nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("Manage feeds after the reset: %d", resp.StatusCode)
+	}
+	if resp := a.call("POST", "/api/v1/feeds", map[string]any{"url": site.URL + "/feed.xml"}, &feed); resp.StatusCode != http.StatusCreated || feed.Total != 2 {
+		t.Errorf("subscribing again after the reset: %d, %d articles", resp.StatusCode, feed.Total)
+	}
+}

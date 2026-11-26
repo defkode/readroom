@@ -103,6 +103,14 @@ func (f *Fetcher) Refresh(ctx context.Context, feed *store.Feed) error {
 	return err
 }
 
+// Paused runs fn while no feed is being fetched and no article preserved, for
+// work that would pull the ground from under a pass. It waits for a pass to end.
+func (f *Fetcher) Paused(fn func() error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return fn()
+}
+
 // Kick runs a pass in the background, e.g. after settings changed.
 func (f *Fetcher) Kick() {
 	go f.Pass(context.Background())

@@ -125,8 +125,23 @@ from an image to its entries. After a migration the database is vacuumed and ana
   bring them back as unread. A newly added feed therefore starts with at most the last `keep_days` days.
 - OPML import and export; categories map to OPML folders. The export names each feed as the owner
   sees it, and the import keeps that name as the owner's own, so a rename survives a move to another
-  instance; the first fetch drops the name again where it is only the feed's own title. Nothing else
-  about a feed travels in OPML (its settings, what was read) — "Download everything" is for that.
+  instance; the first fetch drops the name again where it is only the feed's own title.
+  - A feed's settings travel too, as attributes in Readroom's own namespace
+    (`xmlns:readroom="https://github.com/defkode/readroom"`), which OPML allows and other readers
+    ignore: `readroom:aiSummary`, `readroom:aiCleanup`, `readroom:preserve` (`true`/`false`),
+    `readroom:preserveSince` (a timestamp, only when set) and `readroom:keepDays` (0 = forever).
+    The import applies those it finds and understands; a feed without them, or with a value that
+    makes no sense, gets the defaults of a new feed.
+  - The import only adds: a feed already subscribed to is left exactly as it is, settings included,
+    and none is removed. Articles and what was read do not travel in OPML — "Download everything"
+    is for that.
+- **Reset database** (Manage feeds → Collection, `POST /reset`) empties the database: every feed
+  with its settings, every article with what was read and starred, readlists, saved articles, local
+  copies, summaries, translations and recordings. What is left is a fresh installation; the access
+  token and each device's display settings are not in the database and stay. The sheet says what
+  goes, offers "Download everything" first, and wants the word `reset` typed; the API refuses
+  without `{"confirm": "reset"}`. It waits for a running fetch to end, then gives the file's space
+  back.
 
 ### Feed health
 
@@ -612,6 +627,8 @@ token: `Authorization: Bearer <token>` for the API, a cookie set by the login pa
 | Articles saved by address have AI clean-up on from the start | one saved by hand is one the owner means to read, often aloud; the same reasoning as for summaries |
 | Search filters as you type by swapping parts of the fetched page in, not by loading it | a page load, even a swapped-in one, takes the focus from the field and closes a phone's keyboard in the middle of a word |
 | The period filter is three fixed spans in the search field, not a date range | the owner asked for today, last week, last month; a native select costs no extra row on a phone |
+| Feed settings ride in the OPML export as namespaced attributes, not in a format of our own | the owner moved their feeds to a second instance and lost every per-feed switch; OPML is extensible this way, and the file stays a plain feed list for any other reader |
+| Reset database asks for the word "reset" to be typed, in the sheet and in the API | the one action that destroys everything should not be one stray tap or one mistyped request away; the owner wanted it for starting a trial instance over |
 | Testing phase: preview locally, deploy and commit only on request | the NAS keeps a stable version while the UI is being tried out |
 
 ## 9. Known limitations and open questions

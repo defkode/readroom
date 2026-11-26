@@ -113,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/v1/export/db", s.apiExportDB)
 	api.HandleFunc("GET /api/v1/export/opml", s.apiExportOPML)
 	api.HandleFunc("POST /api/v1/import/opml", s.apiImportOPML)
+	api.HandleFunc("POST /api/v1/reset", s.apiReset)
 	mux.Handle("/api/", s.auth(api, false))
 
 	// Web app.

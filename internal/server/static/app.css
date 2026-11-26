@@ -267,6 +267,7 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .rowbtn .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rowbtn .sub { font-size: .8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rowbtn .sub.err, .err { color: var(--danger); }
+.rowbtn.danger > .icon, .rowbtn.danger .title { color: var(--danger); }
 .tags { display: flex; align-items: center; gap: 8px; flex: none; }
 .tag { padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: .72rem; font-weight: 600; white-space: nowrap; }
 .count { color: var(--muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
@@ -285,6 +286,11 @@ main { padding: 0 16px; max-width: 760px; margin: 0 auto; }
 .btn .icon { width: 17px; height: 17px; stroke-width: 2.4; }
 .btn.quiet { background: var(--accent-soft); color: var(--accent); }
 .btn.danger { background: transparent; color: var(--danger); }
+.btn.danger.solid { background: var(--danger); color: var(--surface); }
+.sheet .warning { display: flex; gap: 10px; padding: 10px 12px; border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 9%, var(--surface)); }
+.sheet .warning .icon { color: var(--danger); margin-top: 1px; }
+.sheet .hint { margin: 12px 0 0; }
+.sheet p a { color: var(--accent); }
 .btn.wide { width: 100%; }
 .btn:active { opacity: .7; }
 .btn[disabled] { opacity: .5; }
